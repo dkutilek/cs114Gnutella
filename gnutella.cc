@@ -135,7 +135,7 @@ public:
   }
 
   void handleConnectRequest(int connection, sockaddr_in remoteInfo) {
-    cout << "Received connect request." << endl;
+    log("Received connect request.");
     char connectResponse[] = "GNUTELLA OK\n\n";
 
     // Check if the peer list is full
