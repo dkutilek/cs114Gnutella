@@ -1,11 +1,15 @@
-all: gnutella
+CXXFLAGS =	-O2 -g -Wall -fmessage-length=0
 
-gnutella.o: gnutella.cc
-	g++ -c gnutella.cc
+OBJS =		gnutella.o
 
-gnutella: gnutella.o
-	g++ gnutella.o -o gnutella
+LIBS =
+
+TARGET =	gnutella
+
+$(TARGET):	$(OBJS)
+	$(CXX) -o $(TARGET) $(OBJS) $(LIBS)
+
+all:	$(TARGET)
 
 clean:
-	rm -f *.o
-	rm -f gnutella
+	rm -f $(OBJS) $(TARGET)
