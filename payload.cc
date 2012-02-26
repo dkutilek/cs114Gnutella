@@ -7,6 +7,9 @@
 
 #include <string>
 #include <climits>
+#include <string.h>
+#include <cstdlib>
+#include <vector>
 using namespace std;
 
 #define PONG_LEN 13
@@ -203,17 +206,18 @@ public:
 	QueryHit_Payload(unsigned short port, unsigned long ip_addr,
 			unsigned long speed, vector<Result> result_set,
 			const char * servent_id) {
+
+		// Number of Hits
+		m_num_hits = result_set.size();
+		little_to_big_endian(m_payload, m_num_hits, 1);
+
 		m_payload_len = 11;
-		for (Result r : result_set) {
+		for (unsigned short i; i < m_num_hits; i ++) {
+			Result r = result_set.at(i);
 			m_payload_len += r.get_payload_len();
 		}
 		m_payload_len += 16;
 		m_payload = (char *) malloc (m_payload_len);
-
-		// Number of Hits
-		m_num_hits = result_set.size();
-		m_result_set = result_set.resize(m_num_hits); /* Shrink to fit */
-		little_to_big_endian(m_payload, m_num_hits, 1);
 
 		// Port
 		little_to_big_endian(m_payload+1, port, 2);
@@ -231,6 +235,7 @@ public:
 		unsigned long len = 11;
 		for (unsigned short i = 0; i < m_num_hits; i++) {
 			Result r = m_result_set.at(i);
+			m_result_set.push_back(r);
 			memcpy(m_payload+len, r.get_payload(), r.get_payload_len());
 			len += r.get_payload_len();
 		}
@@ -352,7 +357,7 @@ void big_to_little_endian(unsigned long * dest, const char * payload,
 	unsigned long result = 0;
 	if (len > sizeof (unsigned long))
 		len = sizeof (unsigned long);
-	for (int i = 0; i < len; i++) {
+	for (unsigned long i = 0; i < len; i++) {
 		result |= payload[i];
 		result <<= CHAR_BIT;
 	}
@@ -364,7 +369,7 @@ void big_to_little_endian(unsigned short * dest, const char * payload,
 	unsigned short result = 0;
 	if (len > sizeof (unsigned short))
 		len = sizeof (unsigned short);
-	for (int i = 0; i < len; i++) {
+	for (unsigned long i = 0; i < len; i++) {
 		result |= payload[i];
 		result <<= CHAR_BIT;
 	}

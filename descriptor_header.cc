@@ -8,6 +8,8 @@
 #include "descriptor_header.h"
 #include "payload.h"
 #include <climits>
+#include <string.h>
+#include <cstdlib>
 using namespace std;
 
 class DescriptorHeader {
@@ -16,7 +18,7 @@ private:
 	unsigned long m_message_id, m_payload_len;
 	unsigned short m_time_to_live, m_hops;
 	header_type m_type;
-	Payload m_payload;
+	//Payload m_payload;
 public:
 	DescriptorHeader(char * header) {
 		memcpy(m_header, header, 23);

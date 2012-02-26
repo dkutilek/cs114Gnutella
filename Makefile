@@ -1,6 +1,6 @@
 CXXFLAGS =	-O2 -g -Wall -fmessage-length=0
 
-OBJS =		gnutella.o
+OBJS =		gnutella.o descriptor_header.o payload.o
 
 LIBS =
 
