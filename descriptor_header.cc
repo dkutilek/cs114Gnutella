@@ -18,7 +18,7 @@ private:
 	unsigned long m_message_id, m_payload_len;
 	unsigned short m_time_to_live, m_hops;
 	header_type m_type;
-	//Payload m_payload;
+	Payload * m_payload;
 public:
 	DescriptorHeader(char * header) {
 		memcpy(m_header, header, 23);
@@ -32,19 +32,19 @@ public:
 
 		// Header Type
 		switch (m_header[16]) {
-		case 0:
+		case (char) 0x00:
 			m_type = ping;
 			break;
-		case 1:
+		case (char) 0x01:
 			m_type = pong;
 			break;
-		case 128:
+		case (char) 0x80:
 			m_type = query;
 			break;
-		case 129:
+		case (char) 0x81:
 			m_type = quieryHit;
 			break;
-		case 64:
+		case (char) 0x40:
 			m_type = push;
 			break;
 		default:

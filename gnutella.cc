@@ -11,6 +11,7 @@
 #include <string.h>
 #include <string>
 #include <fstream>
+#include <ctime>
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
@@ -24,6 +25,18 @@ typedef struct peer {
   unsigned short port;
 } peer_t;
 
+string get_time() {
+	time_t rawtime;
+	struct tm * timeinfo;
+	char buffer[80];
+	time (&rawtime);
+	timeinfo = localtime(&rawtime);
+
+	strftime(buffer, 80, "%m/%d/%y %H:%M:%S", timeinfo);
+
+	return string(buffer);
+}
+
 class Gnutella {
 private:
   int m_socket;      // Holds the socket descriptor
@@ -32,12 +45,12 @@ private:
   fstream m_log;
   
   void error(string msg) {
-    m_log << "[ERR] " << msg << ": " << strerror(errno) << endl;
+    m_log << "[ERR " << get_time() << "] " << msg << ": " << strerror(errno) << endl;
     exit(1);
   }
   
   void log(string msg) {
-    m_log << "[LOG] " << msg << endl;
+    m_log << "[LOG " << get_time() << "] " << msg << endl;
   }
 
 public:
