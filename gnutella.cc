@@ -12,6 +12,7 @@
 #include <string>
 #include <fstream>
 #include <ctime>
+#include "descriptor_header.h"
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
@@ -109,31 +110,11 @@ public:
       int connection = accept(m_socket, (sockaddr *) &remoteInfo, &addrLength);
 
       // Create a buffer for a received message
-      char buffer[BUFFER_SIZE];
-      memset(buffer, 0, sizeof(buffer));
-      int used = 0;
-      int remaining = BUFFER_SIZE - 1;
-
-      // Read messages into the buffer until either it is full, or
-      // a \n\n is found
-      while (remaining > 0) {
-        int readBytes = recv(connection, &buffer[used], remaining, 0);
-        used += readBytes;
-        remaining -= readBytes;
-        buffer[BUFFER_SIZE - 1] = '\0';
-
-        string str(buffer);
-        int pos = str.find("\n\n");
-
-        if (pos != -1) {
-          memset(buffer, 0, sizeof(buffer));
-          strcpy(buffer, str.substr(0, pos + 2).c_str());
-          break;
-        }
-      }
+		char header[HEADER_SIZE];
+	readMessageHeader(header, connection);
 
       // Handle responses
-      if (strcmp(buffer, "GNUTELLA CONNECT/0.4\n\n") == 0) {
+      if (strcmp(header, "GNUTELLA CONNECT/0.4\n\n") == 0) {
         handleConnectRequest(connection, remoteInfo);
       }
       else {
@@ -172,38 +153,17 @@ public:
     }
 
     char request[] = "GNUTELLA CONNECT/0.4\n\n";
-    char response[] = "GNUTELLA OK\n\n";
 
     // Send a connect request
     log("Sending bootstrap connect request.");
     send(m_socket, request, sizeof(request), 0);
 
     // Create a buffer for a received message
-    char buffer[BUFFER_SIZE];
-    memset(buffer, 0, sizeof(buffer));
-    int used = 0;
-    int remaining = BUFFER_SIZE - 1;
-
-    // Read messages into the buffer until either it is full, or a \n\n
-    // is found
-    while (remaining > 0) {
-      int readBytes = recv(m_socket, &buffer[used], remaining, 0);
-      used += readBytes;
-      remaining -= readBytes;
-      buffer[BUFFER_SIZE - 1] = '\0';
-
-      string str(buffer);
-      int pos = str.find("\n\n");
-
-      if (pos != -1) {
-        memset(buffer, 0, sizeof(buffer));
-        strcpy(buffer, str.substr(0, pos + 2).c_str());
-        break;
-      }
-    }
+		char header[HEADER_SIZE];
+	readMessageHeader(header, m_socket);
 
     // If the host replies, add it as a new peer
-    if (strcmp(buffer, "GNUTELLA OK\n\n") == 0) {
+    if (strcmp(header, "GNUTELLA OK\n\n") == 0) {
       peer_t peer;
       peer.address = nodeInfo.sin_addr.s_addr;
       peer.port = nodeInfo.sin_port;
@@ -218,6 +178,28 @@ public:
     // Close the connection and reinitialize the socket
     close(m_socket);
   }
+
+	void readMessageHeader(char *buffer, int connection) {
+		memset(buffer, 0, HEADER_SIZE);
+		int used = 0;
+		int remaining = HEADER_SIZE - 1;
+		
+		while (remaining > 0) {
+			int bytesRead = recv(connection, &buffer[used], remaining, 0);
+			used += bytesRead;
+			remaining -= bytesRead;
+			buffer[used] = '\0';
+			
+			string str(buffer);
+			int pos = str.find("\n\n");	
+			
+			if (pos != -1) {
+				memset(buffer, 0, sizeof(buffer));
+				strcpy(buffer, str.substr(0, pos + 2).c_str());
+				break;
+			}
+		}
+	}
 };
 
 int main(int argc, char **argv) {

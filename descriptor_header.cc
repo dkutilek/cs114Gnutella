@@ -10,18 +10,19 @@
 #include <climits>
 #include <string.h>
 #include <cstdlib>
+
 using namespace std;
 
 class DescriptorHeader {
 private:
-	char m_header[23];
+	char m_header[HEADER_SIZE];
 	unsigned long m_message_id, m_payload_len;
 	unsigned short m_time_to_live, m_hops;
 	header_type m_type;
 	Payload * m_payload;
 public:
 	DescriptorHeader(char * header) {
-		memcpy(m_header, header, 23);
+		memcpy(m_header, header, HEADER_SIZE);
 
 		// Message ID
 		m_message_id = 0;
@@ -60,7 +61,7 @@ public:
 
 		// Payload length
 		m_payload_len = 0;
-		for (int i = 19; i < 23; i++) {
+		for (int i = 19; i < HEADER_SIZE; i++) {
 			m_payload_len |= m_header[i];
 			m_payload_len <<= CHAR_BIT;
 		}
