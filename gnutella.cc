@@ -159,7 +159,7 @@ public:
     send(m_socket, request, sizeof(request), 0);
 
     // Create a buffer for a received message
-		char header[HEADER_SIZE];
+	char header[HEADER_SIZE];
 	readMessageHeader(header, m_socket);
 
     // If the host replies, add it as a new peer
@@ -179,6 +179,8 @@ public:
     close(m_socket);
   }
 
+	// Argument 'buffer' should be an already allocated buffer of size
+	// HEADER_SIZE
 	void readMessageHeader(char *buffer, int connection) {
 		memset(buffer, 0, HEADER_SIZE);
 		int used = 0;
@@ -198,6 +200,21 @@ public:
 				strcpy(buffer, str.substr(0, pos + 2).c_str());
 				break;
 			}
+		}
+	}
+	
+	// Argument 'buffer' should be an already allocated buffer of size
+	// BUFFER_SIZE
+	void readMessagePayload(char *buffer, int connection) {
+		memset(buffer, 0, BUFFER_SIZE);
+		int used = 0;
+		int remaining = BUFFER_SIZE - 1;
+		
+		while (remaining > 0) {
+			int bytesRead = recv(connection, &buffer[used], remaining, 0);
+			used += bytesRead;
+			remaining -= bytesRead;
+			buffer[used] = '\0';
 		}
 	}
 };
