@@ -228,13 +228,34 @@ public:
 	  		// Read the descriptor header
 			string *messageHeader = readDescriptorHeader(connection);
 
-	  		// Handle requests
+	  		// Handle connect request
 	  		if (strcmp(messageHeader->c_str(), "GNUTELLA CONNECT/0.4\n\n") == 0) {
 				handleConnect(connection);
 	  		}
 			// Other requests
 	  		else {
-		
+				// Construct a descriptor heaader from the message
+				DescriptorHeader *header = new DescriptorHeader(messageHeader->c_str());
+				
+				switch (header->get_header_type()) {
+					case ping:
+						// Handle ping
+					break;
+					case pong:
+						// Handle pong
+					break;
+					case query:
+						// Handle query
+					break;
+					case queryHit:
+						// Handle queryHit
+					break;
+					case push:
+						// Handle push
+					break;
+				}
+				
+				delete(header);
 	  		}
 
 			delete messageHeader;
