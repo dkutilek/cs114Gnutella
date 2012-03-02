@@ -368,6 +368,26 @@ public:
 		
 		close(m_socket);	// Close the connection and free the socket	
 	}
+
+	// This function handles the user controlled
+	void userNode()
+	{
+		string str;
+		while (true) {
+			cout << "5) Ping/Pong\n6) Query\n7) Exit to network.sh\n#? ";
+			cin >> str;
+			if (str == "5") {
+
+			}
+			else if (str == "6") {
+
+			}
+			else if (str == "7")
+				return;
+			else
+				cout << "Bad option\n";
+		}
+	}
 };
 
 int main(int argc, char **argv) {
@@ -383,6 +403,12 @@ int main(int argc, char **argv) {
   if (argc >= 4) {
 	node->bootstrap(argv[2], atoi(argv[3]));
 	//node->sendQuery(argv[2], atoi(argv[3]), "test.txt");
+  }
+
+  if (argc >= 5 && strcmp(argv[4],"user") == 0) {
+	  node->userNode();
+	  delete node;
+	  return 0;
   }
 
   node->acceptConnections();

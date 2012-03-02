@@ -1,14 +1,18 @@
 #!/bin/bash
+
+# Usage notification
 if [ -z "$1" ]; then
  echo "usage: $0 <num nodes>"
  exit
 fi
 
+# Input check
 if [ "$1" -lt 0 ]; then
  echo "<num nodes> must be positive"
  exit
 fi
 
+# Port value check
 PORT="11111"
 if [ -n "$2" ]; then
   if [ "$2" -lt 0 ]; then
@@ -18,12 +22,43 @@ if [ -n "$2" ]; then
   fi
 fi
 
+# Control while loop
 NUMNODES=$1
 COUNT=0
 MODCOUNT=0
 BOOTPORT=$PORT
 OPTIONS="Build Destroy Exit"
-select opt in $OPTIONS; do
+while true; do
+    # List options
+    X=1
+    for i in $OPTIONS; do
+      # Display "User Controlled Node" instead of just "User"
+      if [ "$i" = "User" ]; then
+        i="User Controlled Node"
+      fi
+      echo "$X) $i"
+      let "X += 1"
+    done
+    echo -n "#? "
+    read opt
+
+    # Read value
+    X=1
+    FOUND="0"
+    for i in $OPTIONS; do
+      if [ "$opt" = "$X" ]; then
+        opt=$i
+        FOUND="1"
+        break
+      fi
+      let "X += 1"
+    done
+    if [ "$FOUND" = "0" ]; then
+      opt="Bad Option"
+    fi
+
+
+    # Build network and allow query option
     if [ "$opt" = "Build" ]; then
      echo "Building network..."
      ./gnutella $PORT &
@@ -42,7 +77,10 @@ select opt in $OPTIONS; do
          let "COUNT += 1"
      done
      echo `ps -e | grep gnutella | awk '{print $1}'`
+     OPTIONS="Build Destroy User Exit"
      echo "Network built!"
+
+    # Destroy network and remove query option
     elif [ "$opt" = "Destroy" ]; then
      echo "Destroying network..."
      PIDS=`ps -e | grep gnutella | awk '{print $1}'`;
@@ -51,11 +89,18 @@ select opt in $OPTIONS; do
        do
          kill -9 $i
      done
+     OPTIONS="Build Destroy Exit"
      echo "Network destroyed!"
+
+    # Start user control Gnutella node
+    elif [ "$opt" = "User" ]; then
+      ./gnutella $PORT 127.0.0.1 $BOOTPORT user
+
+    # Exit script
     elif [ "$opt" = "Exit" ]; then
      exit
+
     else
-     clear
      echo "Bad option"
     fi
 done
