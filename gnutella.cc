@@ -21,6 +21,8 @@
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
+#define DEFAULT_TTL 7
+#define DEFAULT_HOPS 7
 
 using namespace std;
 
@@ -48,8 +50,8 @@ private:
 	vector<peer_t> m_peers;  // A list of peers that this node knows about
 	int m_port;		 // The port that this node will listen on, in little-endian format
 	fstream m_log;
-	int m_maximumUploadRate;	// in KB/s
-	int m_minimumDownloadRate;	// in KB/s
+	unsigned char m_maximumUploadRate;		// in KB/s
+	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
 	vector<string> m_fileList;
   
@@ -180,6 +182,17 @@ private:
 		return new string(buffer);
 	}
 	
+	// This function will set up a sockaddr_in structure for initializing
+	// a connection to a remote node
+	void remoteInfoSetup(sockaddr_in *remoteInfo, const char *address, 
+		unsigned short port)
+	{
+		memset(remoteInfo, 0, sizeof(sockaddr_in));
+		remoteInfo->sin_family = AF_INET;
+		remoteInfo->sin_addr.s_addr = inet_addr(address);
+		remoteInfo->sin_port = htons(port);
+	}
+	
 	// This function gets called when the node receives a "GNUTELLA CONNECT"
 	// message.  It just sends a "GNUTELLA OK" response back on the same
 	// connection.
@@ -187,6 +200,23 @@ private:
 		log("Received connect request.");
 		char connectResponse[] = "GNUTELLA OK\n\n";
 		send(connection, connectResponse, sizeof(connectResponse), 0);
+	}
+	
+	// This function gets called when the node receives a QUERY message.
+	void handleQuery(int connection, DescriptorHeader *header) {
+		log("Received query request.");
+		
+		// Get the payload
+		string *payload = readDescriptorPayload(connection, header->get_payload_len());
+		
+		// The first character of the payload should be the transfer rate
+		unsigned char transferRate = payload->at(0);
+		
+		// The rest of the payload is a string that determines the file that the sender
+		// is looking for
+		string searchCriteria = payload->substr(1);
+		
+		delete payload;
 	}
 
 public:
@@ -245,7 +275,7 @@ public:
 						// Handle pong
 					break;
 					case query:
-						// Handle query
+					handleQuery(connection, header);
 					break;
 					case queryHit:
 						// Handle queryHit
@@ -311,6 +341,33 @@ public:
 		delete response;
 		close(m_socket);	// Close the connection and free the socket
   	}
+
+	// This function sends a query message to a remote node.
+	void sendQuery(const char *address, unsigned short port, 
+		string searchCriteria)
+	{
+		Query_Payload payload(m_minimumDownloadRate, searchCriteria);
+		DescriptorHeader header(port, query, DEFAULT_TTL, DEFAULT_HOPS, payload.get_payload_len());
+		
+		// Setup socket/remote info
+		acquireSocket();
+		sockaddr_in remoteInfo;
+		remoteInfoSetup(&remoteInfo, address, port);
+		
+		// Attempt a connection to the remote node
+		int status = connect(m_socket, (sockaddr *) &remoteInfo, sizeof(remoteInfo));
+		
+		if (status == -1) {
+			error("Could not connect to remote host");
+		}
+		
+		// Send the message
+		log("Sending QUERY message.");
+		send(m_socket, header.get_header(), sizeof(header.get_header()), 0);
+		send(m_socket, payload.get_payload(), sizeof(payload.get_payload()), 0);
+		
+		close(m_socket);	// Close the connection and free the socket	
+	}
 };
 
 int main(int argc, char **argv) {
@@ -325,6 +382,7 @@ int main(int argc, char **argv) {
 
   if (argc >= 4) {
 	node->bootstrap(argv[2], atoi(argv[3]));
+	//node->sendQuery(argv[2], atoi(argv[3]), "test.txt");
   }
 
   node->acceptConnections();
