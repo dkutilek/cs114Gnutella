@@ -363,8 +363,8 @@ public:
 		
 		// Send the message
 		log("Sending QUERY message.");
-		send(m_socket, header.get_header(), sizeof(header.get_header()), 0);
-		send(m_socket, payload.get_payload(), sizeof(payload.get_payload()), 0);
+		send(m_socket, header.get_header(), HEADER_SIZE, 0);
+		send(m_socket, payload.get_payload(), payload.get_payload_len(), 0);
 		
 		close(m_socket);	// Close the connection and free the socket	
 	}
