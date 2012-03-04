@@ -282,12 +282,14 @@ private:
 	}
 
 	// This function gets called when the node receives a PING message.
-	void handlePing(int connection, DescriptorHeader *header) {
+	void handlePing(int connection, DescriptorHeader *header,
+			in_addr address, in_port_t port) {
 		// Do things with the PING
 	}
 
 	// This function gets called when the node recieves a PONG message.
-	void handlePong(int connection, DescriptorHeader *header) {
+	void handlePong(int connection, DescriptorHeader *header,
+			in_addr address, in_port_t port) {
 		// Get the payload
 		Pong_Payload *payload =(Pong_Payload *)
 				readDescriptorPayload(connection, pong,
@@ -299,7 +301,8 @@ private:
 	}
 
 	// This function gets called when the node receives a QUERY message.
-	void handleQuery(int connection, DescriptorHeader *header) {
+	void handleQuery(int connection, DescriptorHeader *header,
+			in_addr address, in_port_t port) {
 		// Get the payload
 		Query_Payload *payload = (Query_Payload *)
 				readDescriptorPayload(connection, query,
@@ -316,7 +319,8 @@ private:
 	}
 
 	// This function gets called when the node receives a QUERYHIT message.
-	void handleQueryHit(int connection, DescriptorHeader *header) {
+	void handleQueryHit(int connection, DescriptorHeader *header,
+			in_addr address, in_port_t port) {
 		// Get the payload
 		QueryHit_Payload *payload = (QueryHit_Payload *)
 				readDescriptorPayload(connection, queryHit,
@@ -328,7 +332,8 @@ private:
 	}
 
 	// This function gets called when the node receives a PUSH message.
-	void handlePush(int connection, DescriptorHeader *header) {
+	void handlePush(int connection, DescriptorHeader *header,
+			in_addr address, in_port_t port) {
 		// Get the payload
 		Push_Payload *payload = (Push_Payload *)
 				readDescriptorPayload(connection, push,
@@ -482,31 +487,36 @@ public:
 					oss << "Received PING from peer at "
 						<< ntohs(remoteInfo.sin_port)-1;
 					log(oss.str());
-					handlePing(connection, header);
+					handlePing(connection, header,
+							remoteInfo.sin_addr, remoteInfo.sin_port);
 					break;
 				case pong:
 					oss << "Received PONG from peer at "
 						<< ntohs(remoteInfo.sin_port)-1;
 					log(oss.str());
-					handlePong(connection, header);
+					handlePong(connection, header,
+							remoteInfo.sin_addr, remoteInfo.sin_port);
 					break;
 				case query:
 					oss << "Received QUERY from peer at "
 						<< ntohs(remoteInfo.sin_port)-1;
 					log(oss.str());
-					handleQuery(connection, header);
+					handleQuery(connection, header,
+							remoteInfo.sin_addr, remoteInfo.sin_port);
 					break;
 				case queryHit:
 					oss << "Received QUERYHIT from peer at "
 						<< ntohs(remoteInfo.sin_port)-1;
 					log(oss.str());
-					handleQueryHit(connection, header);
+					handleQueryHit(connection, header,
+							remoteInfo.sin_addr, remoteInfo.sin_port);
 					break;
 				case push:
 					oss << "Received PUSH from peer at "
 						<< ntohs(remoteInfo.sin_port)-1;
 					log(oss.str());
-					handlePush(connection, header);
+					handlePush(connection, header,
+							remoteInfo.sin_addr, remoteInfo.sin_port);
 					break;
 				case resp:
 					// Do nothing
