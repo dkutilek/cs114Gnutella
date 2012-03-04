@@ -15,6 +15,15 @@ using namespace std;
 DescriptorHeader::DescriptorHeader(const char *header) {
 	memcpy(m_header, header, HEADER_SIZE);
 
+	if (strcmp(m_header, "GNUTELLA OK\n\n") == 0) {
+		m_type = resp;
+		return;
+	}
+	if (strcmp(m_header, "GNUTELLA CONNECT/0.4\n\n") == 0) {
+		m_type = con;
+		return;
+	}
+
 	// Message ID
 	m_message_id = 0;
 	for (int i = 0; i < 16; i++) {
@@ -58,6 +67,19 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	}
 }
 
+DescriptorHeader::DescriptorHeader(header_type type)
+{
+	if (type == con) {
+		m_type = con;
+		strcpy(m_header, "GNUTELLA CONNECT/0.4\n\n");
+		return;
+	}
+	if (type == resp) {
+		m_type = resp;
+		strcpy(m_header, "GNUTELLA OK\n\n");
+		return;
+	}
+}
 
 DescriptorHeader::DescriptorHeader(unsigned long messageID, header_type type,
 		unsigned short time_to_live, unsigned short hops,

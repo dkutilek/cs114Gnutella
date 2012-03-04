@@ -13,7 +13,7 @@
 #define HEADER_SIZE 23
 
 enum header_type {
-	ping, pong, query, queryHit, push
+	con, resp, ping, pong, query, queryHit, push
 };
 
 class DescriptorHeader {
@@ -27,9 +27,10 @@ private:
 	Payload *m_payload;
 public:
 	DescriptorHeader(const char *header);
+	DescriptorHeader(header_type type);
 	DescriptorHeader(unsigned long messageID, header_type type,
-		unsigned short time_to_live, unsigned short hops,
-		unsigned long payload_len);
+			unsigned short time_to_live, unsigned short hops,
+			unsigned long payload_len);
 	const char *get_header();
 	unsigned long get_message_id();
 	header_type get_header_type();

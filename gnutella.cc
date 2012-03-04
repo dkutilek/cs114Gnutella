@@ -12,6 +12,7 @@
 #include <string>
 #include <fstream>
 #include <ctime>
+#include <climits>
 #include "descriptor_header.h"
 #include "payload.h"
 #include <dirent.h>	// Directory reading
@@ -29,8 +30,8 @@ using namespace std;
 
 // Contains an address and port in big-endian format
 typedef struct peer {
-  unsigned long address;
-  unsigned short port;
+  in_addr address;
+  in_port_t port;
 } peer_t;
 
 string get_time() {
@@ -55,14 +56,20 @@ private:
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
 	vector<string> m_fileList;
+	unsigned int m_messageCount;
+	bool m_userNode;
   
 	void error(string msg) {
 		m_log << "[ERR " << get_time() << "] " << msg << ": " << strerror(errno) << endl;
-		exit(1);
+		if (m_userNode)
+			cerr << "[ERR " << get_time() << "] " << msg << ": " << strerror(errno) << endl;
+		//exit(1);
   	}
   
   	void log(string msg) {
 		m_log << "[LOG " << get_time() << "] " << msg << endl;
+		if (m_userNode)
+			cout << "[LOG " << get_time() << "] " << msg << endl;
   	}
 
 	// Call this function to read the filenames in the directory
@@ -72,6 +79,7 @@ private:
 		
 		if (dirp == NULL) {
 			error("Could not open specified shared directory");
+			exit(1);
 		}
 		
 		while (true) {
@@ -88,15 +96,27 @@ private:
 		
 		if (closedir(dirp)) {
 			error("Could not close directory");
+			exit(1);
 		}
 	}
 	
+	// Generate a unique message id using the port
+	// and number of messages sent.
+	unsigned long generateMessageId() {
+		m_messageCount++;
+		unsigned long id = m_messageCount;
+		id <<= CHAR_BIT*2;
+		id |= m_port;
+		return id;
+	}
+
 	// Call this function to acquire a socket in m_socket
 	void acquireSocket() {
 		m_socket = socket(PF_INET, SOCK_STREAM, 0);
 
 		if (m_socket == -1) {
 	  		error("Could not acquire socket");
+	  		exit(1);
 		}
   	}
 
@@ -112,15 +132,17 @@ private:
 		
 		if (status == -1) {
 			error("Could not bind to socket");
+			exit(1);
 		}
 	}
-	
+
 	// Call this function to listen for connections on the socket m_socket
 	void listenOnSocket() {
 		int status = listen(m_socket, 10000);
 		
 		if (status == -1) {
 			error("Could not listen on socket");
+			exit(1);
 		}
 	}
 	
@@ -128,14 +150,14 @@ private:
 	// The return value is the connection handle.
 	int getConnectionRequest(sockaddr_in *remoteInfo) {
 		memset(remoteInfo, 0, sizeof(sockaddr_in));
-		socklen_t addrLength;
+		socklen_t addrLength = sizeof (sockaddr);
 		return accept(m_socket, (sockaddr *) remoteInfo, &addrLength);
 	}
 	
-	// Use this function to read a descriptor header to a new string object.
-	// Make sure to delete the string when you're done with it, since usually
+	// Use this function to read a descriptor header to a new descriptor header object.
+	// Make sure to delete the header when you're done with it, since usually
 	// this will be used inside a while loop.
-	string *readDescriptorHeader(int connection) {
+	DescriptorHeader *readDescriptorHeader(int connection) {
 		char buffer[HEADER_SIZE];
 		memset(buffer, 0, HEADER_SIZE);
 		int used = 0;
@@ -157,7 +179,7 @@ private:
 			}
 		}
 		
-		return new string(buffer);
+		return new DescriptorHeader(buffer);
 	}
 	
 	// This function will read the message payload based upon how large the
@@ -207,36 +229,137 @@ private:
 		remoteInfo->sin_port = htons(port);
 	}
 	
-	// This function gets called when the node receives a "GNUTELLA CONNECT"
-	// message.  It just sends a "GNUTELLA OK" response back on the same
-	// connection.
-	void handleConnect(int connection) {
-		log("Received connect request.");
-		char connectResponse[] = "GNUTELLA OK\n\n";
-		send(connection, connectResponse, sizeof(connectResponse), 0);
+	// This function will set up a sockaddr_in structure for initializing
+	// a connection to a remote node
+	void remoteInfoSetup(sockaddr_in *remoteInfo, in_addr address,
+		in_port_t port)
+	{
+		memset(remoteInfo, 0, sizeof(sockaddr_in));
+		remoteInfo->sin_family = AF_INET;
+		remoteInfo->sin_addr = address;
+		remoteInfo->sin_port = port;
 	}
-	
-	// This function gets called when the node receives a QUERY message.
-	void handleQuery(int connection, DescriptorHeader *header) {
-		log("Received query request.");
-		
+
+	// This function gets called when the node receives a "GNUTELLA CONNECT"
+	// message.  It just sends a "GNUTELLA OK" response back.
+	void handleConnect(int connection) {
+		DescriptorHeader header(resp);
+		sendOverConnection(connection, &header, NULL);
+	}
+
+	// This function gets called when the node receives a PING message.
+	void handlePing(int connection, DescriptorHeader *header) {
+		// Do things with the PING
+	}
+
+	// This function gets called when the node recieves a PONG message.
+	void handlePong(int connection, DescriptorHeader *header) {
 		// Get the payload
-		Query_Payload *payload = (Query_Payload *) readDescriptorPayload(connection, query, header->get_payload_len());
-		
-		// The first character of the payload should be the transfer rate
-		unsigned short transferRate = payload->get_speed();
-		
-		// The rest of the payload is a string that determines the file that the sender
-		// is looking for
-		string searchCriteria = payload->get_search();
-		
+		Pong_Payload *payload = (Pong_Payload *) readDescriptorPayload(connection, pong, header->get_payload_len());
+
+		// Do things with the PONG
+
 		delete payload;
 	}
 
+	// This function gets called when the node receives a QUERY message.
+	void handleQuery(int connection, DescriptorHeader *header) {
+		// Get the payload
+		Query_Payload *payload = (Query_Payload *) readDescriptorPayload(connection, query, header->get_payload_len());
+
+		// The first character of the payload should be the transfer rate
+		unsigned short transferRate = payload->get_speed();
+
+		// The rest of the payload is a string that determines the file that the sender
+		// is looking for
+		string searchCriteria = payload->get_search();
+
+		delete payload;
+	}
+
+	// This function gets called when the node receives a QUERYHIT message.
+	void handleQueryHit(int connection, DescriptorHeader *header) {
+		// Get the payload
+		QueryHit_Payload *payload = (QueryHit_Payload *) readDescriptorPayload(connection, queryHit, header->get_payload_len());
+
+		// Do things with the QUERYHIT
+
+		delete payload;
+	}
+
+	// This function gets called when the node receives a PUSH message.
+	void handlePush(int connection, DescriptorHeader *header) {
+		// Get the payload
+		Push_Payload *payload = (Push_Payload *) readDescriptorPayload(connection, push, header->get_payload_len());
+
+		// Do things with the PUSH
+
+		delete payload;
+	}
+
+	// Send a header and a payload to a given peer.  For PING headers, payload = NULL.
+	void sendToPeer(peer_t peer, DescriptorHeader* header, Payload* payload) {
+		// Set up the structure for connecting to the remote node
+		sockaddr_in nodeInfo;
+		remoteInfoSetup(&nodeInfo, peer.address, peer.port);
+
+		// Try to start a connection
+		int status = connect(m_socket, (sockaddr *) &nodeInfo, sizeof(nodeInfo));
+		if (status == -1) {
+			ostringstream oss;
+			oss << "Could not connect to peer at " << ntohs(peer.port) << ".";
+	  		error(oss.str());
+	  		return;
+		}
+
+		// Send a header followed by a payload
+		ostringstream oss;
+		oss << "Sending " << header->get_header_type() << " request to peer at " << ntohs(peer.port) << ".";
+		log(oss.str());
+		status = send(m_socket, header->get_header(), HEADER_SIZE, 0);
+		if (status != HEADER_SIZE) {
+			ostringstream logoss;
+			logoss << "Failed to send " << header->get_header_type() << " request to peer at " << ntohs(peer.port) << ".";
+			error(logoss.str());
+			return;
+		}
+		if (payload != NULL) {
+			status = send(m_socket, payload->get_payload(), payload->get_payload_len(), 0);
+			if (status < 0 || (unsigned int) status != payload->get_payload_len()) {
+				ostringstream logoss;
+				logoss << "Failed to send " << header->get_header_type() << " payload to peer at " << ntohs(peer.port) << ".";
+				error(logoss.str());
+				return;
+			}
+		}
+	}
+
+	// Send a header and a payload over an already opened connection.
+	void sendOverConnection(int connection, DescriptorHeader* header, Payload* payload) {
+		int status = send(connection, header->get_header(), HEADER_SIZE, 0);
+		if (status == -1) {
+			ostringstream logoss;
+			logoss << "Failed to send " << header->get_header_type() << " request to peer at on connection " << connection << ".";
+			error(logoss.str());
+			return;
+		}
+		if (payload != NULL) {
+			status = send(connection, payload->get_payload(), payload->get_payload_len(), 0);
+			if (status < 0 || (unsigned int) status != payload->get_payload_len()) {
+				ostringstream logoss;
+				logoss << "Failed to send " << header->get_header_type() << " payload to peer on connection " << connection << ".";
+				error(logoss.str());
+				return;
+			}
+		}
+	}
+
 public:
-  	Gnutella(int port = DEFAULT_PORT) {
+  	Gnutella(int port = DEFAULT_PORT, bool userNode = false) {
 		m_port = port;
 		m_sharedDirectoryName = DEFAULT_SHARE_DIRECTORY;
+		m_messageCount = 0;
+		m_userNode = userNode;
 		
 		// Open the log
 		char str[15];
@@ -256,6 +379,10 @@ public:
 		m_log.close();
   	}
 
+  	void activateUserNode() {
+  		m_userNode = true;
+  	}
+
 	// This function is called after the node has bootstrapped onto the 
 	// network, discovered other nodes with PING,
 	// and just wants to listen and respond to messages.
@@ -269,40 +396,48 @@ public:
 			sockaddr_in remoteInfo;	// This structure holds info about whoever is connecting to us.
 			int connection = getConnectionRequest(&remoteInfo);
 
-	  		// Read the descriptor header
-			string *messageHeader = readDescriptorHeader(connection);
+			// Construct a descriptor heaader from the message
+			DescriptorHeader *header = readDescriptorHeader(connection);
 
-	  		// Handle connect request
-	  		if (strcmp(messageHeader->c_str(), "GNUTELLA CONNECT/0.4\n\n") == 0) {
-				handleConnect(connection);
-	  		}
-			// Other requests
-	  		else {
-				// Construct a descriptor heaader from the message
-				DescriptorHeader *header = new DescriptorHeader(messageHeader->c_str());
-				
-				switch (header->get_header_type()) {
-					case ping:
-						// Handle ping
+			ostringstream oss;
+			// Handle requests
+			switch (header->get_header_type()) {
+				case con:
+					oss << "Received CONNECT from peer at " << ntohs(remoteInfo.sin_port) << ".";
+					log(oss.str());
+					handleConnect(connection);
 					break;
-					case pong:
-						// Handle pong
+				case ping:
+					oss << "Received PING from peer at " << ntohs(remoteInfo.sin_port) << ".";
+					log(oss.str());
+					handlePing(connection, header);
 					break;
-					case query:
+				case pong:
+					oss << "Received PONG from peer at " << ntohs(remoteInfo.sin_port) << ".";
+					log(oss.str());
+					handlePong(connection, header);
+					break;
+				case query:
+					oss << "Received QUERY from peer at " << ntohs(remoteInfo.sin_port) << ".";
+					log(oss.str());
 					handleQuery(connection, header);
 					break;
-					case queryHit:
-						// Handle queryHit
+				case queryHit:
+					oss << "Received QUERYHIT from peer at " << ntohs(remoteInfo.sin_port) << ".";
+					log(oss.str());
+					handleQueryHit(connection, header);
 					break;
-					case push:
-						// Handle push
+				case push:
+					oss << "Received PUSH from peer at " << ntohs(remoteInfo.sin_port) << ".";
+					log(oss.str());
+					handlePush(connection, header);
 					break;
-				}
-				
-				delete(header);
-	  		}
+				case resp:
+					// Do nothing
+					break;
+			}
 
-			delete messageHeader;
+			delete(header);
 	  		close(connection);
 		}
 
@@ -317,34 +452,23 @@ public:
 	// is an actual gnutella node.
   	void bootstrap(const char *address, int port) {
 		acquireSocket();
+		bindSocket();
 
-		// Set up the structure for connecting to the remote node
-		sockaddr_in nodeInfo;
-		memset(&nodeInfo, 0, sizeof(nodeInfo));
-		nodeInfo.sin_family = AF_INET;
-		nodeInfo.sin_addr.s_addr = inet_addr(address);
-		nodeInfo.sin_port = htons(port);
-
-		// Try to start a connection
-		int status = connect(m_socket, (sockaddr *) &nodeInfo, sizeof(nodeInfo));
-
-		if (status == -1) {
-	  		error("Could not connect to boostrap host");
-		}
-
-		char request[] = "GNUTELLA CONNECT/0.4\n\n";
-
-		// Send a connect request
-		log("Sending bootstrap connect request.");
-		send(m_socket, request, sizeof(request), 0);
+  		DescriptorHeader header(con);
+  		peer_t peer;
+  		peer.address.s_addr = inet_addr(address);
+  		peer.port = htons(port);
+  		sendToPeer(peer, &header, NULL);
 
 		// Get the response
-		string *response = readDescriptorHeader(m_socket);
+		DescriptorHeader *response = readDescriptorHeader(m_socket);
 		
 		// If the remote node replies correctly, we can use other messages,
 		// otherwise, the node should fail.
-		if (strcmp(response->c_str(), "GNUTELLA OK\n\n") == 0) {
+		if (response->get_header_type() == resp) {
 			log("Connected to bootstrap host.");
+			// Add to peer list.
+			m_peers.push_back(peer);
 		}
 		else {
 			log("The bootstrap host rejected the connect request.");
@@ -356,31 +480,22 @@ public:
 		close(m_socket);	// Close the connection and free the socket
   	}
 
-	// This function sends a query message to a remote node.
-	void sendQuery(const char *address, unsigned short port, 
-		string searchCriteria)
+	// Send a PING to a given peer
+	void sendPing(peer_t peer) {
+		DescriptorHeader header(generateMessageId(), ping, DEFAULT_TTL, DEFAULT_HOPS, 0);
+		acquireSocket();
+		bindSocket();
+		sendToPeer(peer, &header, NULL);
+	}
+
+	// Send a QUERY to a given peer
+	void sendQuery(peer_t peer, string searchCriteria)
 	{
 		Query_Payload payload(m_minimumDownloadRate, searchCriteria);
-		DescriptorHeader header(port, query, DEFAULT_TTL, DEFAULT_HOPS, payload.get_payload_len());
-		
-		// Setup socket/remote info
+		DescriptorHeader header(generateMessageId(), query, DEFAULT_TTL, DEFAULT_HOPS, payload.get_payload_len());
 		acquireSocket();
-		sockaddr_in remoteInfo;
-		remoteInfoSetup(&remoteInfo, address, port);
-		
-		// Attempt a connection to the remote node
-		int status = connect(m_socket, (sockaddr *) &remoteInfo, sizeof(remoteInfo));
-		
-		if (status == -1) {
-			error("Could not connect to remote host");
-		}
-		
-		// Send the message
-		log("Sending QUERY message.");
-		send(m_socket, header.get_header(), HEADER_SIZE, 0);
-		send(m_socket, payload.get_payload(), payload.get_payload_len(), 0);
-		
-		close(m_socket);	// Close the connection and free the socket	
+		bindSocket();
+		sendToPeer(peer, &header, &payload);
 	}
 
 	// This function handles the user controlled
@@ -388,10 +503,36 @@ public:
 	{
 		string str;
 		while (true) {
-			cout << "5) Ping/Pong\n6) Query\n7) Exit to network.sh\n#? ";
+			cout << "5) Ping\n6) Query\n7) Exit to network.sh\n#? ";
 			cin >> str;
 			if (str == "5") {
-
+				for (size_t i = 0; i < m_peers.size(); i++) {
+					peer_t p = m_peers.at(i);
+					cout << i+1 << ". " << inet_ntoa(p.address) << " " << ntohs(p.port) << "\n";
+				}
+				vector<peer_t> peers;
+				cout << "List all peers, separated by blank space, you wish to PING.\nFor all peers input \"all\"\n";
+				while (true) {
+					cout << "#? ";
+					cin >> str;
+					if (str.find("all") != string::npos) {
+						peers = m_peers;
+					}
+					else {
+						for (string::iterator it = str.begin(); it != str.end(); it++) {
+							char c = *it;
+							size_t digit = c - '0';
+							if (isdigit(c) && digit > 0 && digit <= m_peers.size())
+								peers.push_back(m_peers.at(digit-1));
+						}
+					}
+					if (peers.size() == 0)
+						cout << "Bad input\n";
+					else
+						break;
+				}
+				for (vector<peer_t>::iterator it = peers.begin(); it != peers.end(); it++)
+					sendPing(*it);
 			}
 			else if (str == "6") {
 
@@ -420,6 +561,7 @@ int main(int argc, char **argv) {
   }
 
   if (argc >= 5 && strcmp(argv[4],"user") == 0) {
+	  node->activateUserNode();
 	  node->userNode();
 	  delete node;
 	  return 0;
