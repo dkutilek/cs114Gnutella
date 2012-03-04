@@ -25,6 +25,8 @@
 #define DEFAULT_SHARE_DIRECTORY "./share"
 #define DEFAULT_TTL 7
 #define DEFAULT_HOPS 7
+#define PING_TIMEOUT 5
+#define SENDQUERY_TIMEOUT 5
 
 using namespace std;
 
@@ -174,11 +176,35 @@ private:
 	}
 
 	// Call this function to see if someone is trying to connect to us.
-	// The return value is the connection handle.
-	int getConnectionRequest(sockaddr_in *remoteInfo) {
+	// The return value is the connection handle. The optional argument
+	// timeout determines how long to wait for a connection. Passing 0 in
+	// as the timeout means no timeout, it blocks indefinitely.
+	int getConnectionRequest(sockaddr_in *remoteInfo, unsigned int timeout = 0) {
 		memset(remoteInfo, 0, sizeof(sockaddr_in));
 		socklen_t addrLength = sizeof (sockaddr);
-		return accept(m_recv, (sockaddr *) remoteInfo, &addrLength);
+
+		if (timeout != 0) {
+			fd_set rfds;
+			timeval tv;
+			int retval;
+
+			FD_ZERO(&rfds);
+			FD_SET(m_recv, &rfds);
+			tv.tv_sec = timeout;
+			tv.tv_usec = 0;
+			retval = select(m_recv, &rfds, NULL, NULL, &tv);
+
+			if (retval == -1) {
+				error("Select on listening port failed");
+				return -1;
+			}
+			else if (retval == 0)
+				return -1;
+			else
+				return accept(m_recv, (sockaddr *) remoteInfo, &addrLength);
+		}
+		else
+			return accept(m_recv, (sockaddr *) remoteInfo, &addrLength);
 	}
 	
 	// Use this function to read a descriptor header to a new descriptor header
@@ -452,6 +478,7 @@ public:
 
   	~Gnutella() {
 		m_log.close();
+		closeListenSocket();
   	}
 
   	void activateUserNode() {
@@ -459,14 +486,17 @@ public:
   	}
 
 	// This function is called after the node has bootstrapped onto the 
-	// network, discovered other nodes with PING,
-	// and just wants to listen and respond to messages.
-  	void acceptConnections() {
-		// Continuously accept connections
-		while (true) {
+	// network, discovered other nodes with PING, and just wants to listen
+  	// and respond to messages. The optional argument timeout will cause this
+  	// function to return after timeout seconds.
+  	void acceptConnections(unsigned int timeout = 0) {
+  		time_t starttime = time(NULL);
+		// Continuously accept connections while timeout is greater than
+  		// current time - start time.
+		while (timeout == 0 || difftime(time(NULL), starttime) < timeout) {
 			// This structure holds info about whoever is connecting to us.
 			sockaddr_in remoteInfo;
-			int connection = getConnectionRequest(&remoteInfo);
+			int connection = getConnectionRequest(&remoteInfo, timeout);
 
 			// Construct a descriptor heaader from the message
 			DescriptorHeader *header = readDescriptorHeader(connection);
@@ -526,9 +556,6 @@ public:
 			close(connection);
 			delete(header);
 		}
-
-		// Close the socket
-		closeListenSocket();
   	}
 
 	// This function gets called when a node starts up, and wishes to connect
@@ -599,7 +626,7 @@ public:
 				}
 				vector<peer_t> peers;
 				cout << "List all peers, separated by blank space, you wish to \
-						PING.\nFor all peers input \"all\"\n";
+PING.\nFor all peers input \"all\"\n";
 				while (true) {
 					cout << "#? ";
 					cin >> str;
@@ -624,9 +651,17 @@ public:
 				for (vector<peer_t>::iterator it = peers.begin();
 						it != peers.end(); it++)
 					sendPing(*it);
+
+				acceptConnections(PING_TIMEOUT);
 			}
 			else if (str == "6") {
+				cout << "Please enter a filename to search for\n$? ";
+				cin >> str;
+				for (vector<peer_t>::iterator it = m_peers.begin();
+										it != m_peers.end(); it++)
+					sendQuery(*it, str);
 
+				acceptConnections(SENDQUERY_TIMEOUT);
 			}
 			else if (str == "7")
 				return;
