@@ -13,6 +13,7 @@
 #include <fstream>
 #include <ctime>
 #include "descriptor_header.h"
+#include "payload.h"
 #include <dirent.h>	// Directory reading
 
 #define DEFAULT_PORT 11111
@@ -161,8 +162,8 @@ private:
 	
 	// This function will read the message payload based upon how large the
 	// descriptor header said the payload is.  Make sure to delete the
-	// returned string after you're done with it.
-	string *readDescriptorPayload(int connection, int payloadSize) {
+	// returned payload after you're done with it.
+	Payload *readDescriptorPayload(int connection, header_type type, int payloadSize) {
 		if (payloadSize < 1) {
 			error("Invalid payload size");
 		}
@@ -178,8 +179,21 @@ private:
 			remaining -= bytesRead;
 			buffer[used] = '\0';
 		}
-		
-		return new string(buffer);
+
+		switch (type) {
+		case ping:
+			return NULL;
+		case pong:
+			return new Pong_Payload(buffer);
+		case query:
+			return new Query_Payload(buffer, payloadSize);
+		case queryHit:
+			return new QueryHit_Payload(buffer, payloadSize);
+		case push:
+			return new Push_Payload(buffer);
+		default:
+			return NULL;
+		}
 	}
 	
 	// This function will set up a sockaddr_in structure for initializing
@@ -207,14 +221,14 @@ private:
 		log("Received query request.");
 		
 		// Get the payload
-		string *payload = readDescriptorPayload(connection, header->get_payload_len());
+		Query_Payload *payload = (Query_Payload *) readDescriptorPayload(connection, query, header->get_payload_len());
 		
 		// The first character of the payload should be the transfer rate
-		unsigned char transferRate = payload->at(0);
+		unsigned short transferRate = payload->get_speed();
 		
 		// The rest of the payload is a string that determines the file that the sender
 		// is looking for
-		string searchCriteria = payload->substr(1);
+		string searchCriteria = payload->get_search();
 		
 		delete payload;
 	}
