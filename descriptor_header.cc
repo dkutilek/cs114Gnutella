@@ -28,7 +28,8 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	m_message_id = 0;
 	for (int i = 0; i < 16; i++) {
 		m_message_id |= m_header[i];
-		m_message_id <<= CHAR_BIT;
+		if (i != 15)
+			m_message_id <<= CHAR_BIT;
 	}
 
 	// Header Type
@@ -63,7 +64,8 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	m_payload_len = 0;
 	for (int i = 19; i < HEADER_SIZE; i++) {
 		m_payload_len |= m_header[i];
-		m_payload_len <<= CHAR_BIT;
+		if (i != HEADER_SIZE-1)
+			m_payload_len <<= CHAR_BIT;
 	}
 }
 

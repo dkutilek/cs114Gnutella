@@ -13,6 +13,9 @@
 
 using namespace std;
 
+#define PONG_LEN 14
+#define PUSH_LEN 26
+
 class Payload {
 protected:
 	char *m_payload;

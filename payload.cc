@@ -10,9 +10,6 @@
 #include <cstdlib>
 #include "payload.h"
 
-#define PONG_LEN 13
-#define PUSH_LEN 26
-
 void big_to_little_endian(unsigned long * dest, const char * payload,
 		unsigned long len);
 void big_to_little_endian(unsigned short * dest, const char * payload,
