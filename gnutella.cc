@@ -418,17 +418,26 @@ private:
 				// We might be the actual target
 				if (y->second.address.s_addr == m_self.address.s_addr &&
 					y->second.port == m_self.port) {
-
+					peer_t new_peer;
+					new_peer.address.s_addr = payload->get_ip_addr();
+					new_peer.port = htons(payload->get_port());
+					m_peers.insert(new_peer);
+					ostringstream oss;
+					oss << "New peer at " << payload->get_port() << " added";
+					log(oss.str());
+				}
+				// If not send it along
+				else {
+					DescriptorHeader d(header->get_message_id(),
+							header->get_header_type(), header->get_time_to_live()-1,
+							header->get_hops()+1, header->get_payload_len());
+					sendToPeer(y->second, &d, payload);
 				}
 
-				DescriptorHeader d(header->get_message_id(),
-						header->get_header_type(), header->get_time_to_live()-1,
-						header->get_hops()+1, header->get_payload_len());
-				sendToPeer(y->second, &d, payload);
+				// Erase saved PING
+				x->second.erase(y->first);
 			}
 		}
-		// Do things with the PONG
-
 		delete payload;
 	}
 
@@ -625,6 +634,9 @@ public:
 			DescriptorHeader *header = readDescriptorHeader(connection);
 
 			if (header == NULL)
+				continue;
+
+			if (header->get_time_to_live() == 0)
 				continue;
 
 			ostringstream oss;

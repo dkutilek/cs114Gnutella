@@ -13,20 +13,16 @@ if [ "$1" -lt 0 ]; then
 fi
 
 # Port value check
-PORT="11111"
+FIRSTPORT="11111"
 if [ -n "$2" ]; then
   if [ "$2" -lt 0 ]; then
     echo "<port> must be positive, using default port 11111"
   else
-    PORT=$2
+    FIRSTPORT=$2
   fi
 fi
 
 # Control while loop
-NUMNODES=$1
-COUNT=0
-MODCOUNT=0
-BOOTPORT=$PORT
 OPTIONS="Build Destroy Exit"
 while true; do
     # List options
@@ -61,6 +57,11 @@ while true; do
     # Build network and allow query option
     if [ "$opt" = "Build" ]; then
      echo "Building network..."
+     NUMNODES=$1
+     PORT=$FIRSTPORT
+     COUNT=0
+     MODCOUNT=0
+     BOOTPORT=$PORT
      ./gnutella $PORT &
      let "PORT += 2"
      let "NUMNODES -= 1"
@@ -77,7 +78,7 @@ while true; do
          let "COUNT += 1"
      done
      echo `ps -e | grep gnutella | awk '{print $1}'`
-     OPTIONS="Build Destroy User Exit"
+     OPTIONS="Destroy User Exit"
      echo "Network built!"
 
     # Destroy network and remove query option
@@ -90,6 +91,11 @@ while true; do
          kill -9 $i
      done
      OPTIONS="Build Destroy Exit"
+     PORT=$FIRSTPORT
+     BOOTPORT=$PORT
+     COUNT=0
+     NUMNODES=$1
+     MODCOUNT=0
      echo "Network destroyed!"
 
     # Start user control Gnutella node

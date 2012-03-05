@@ -24,10 +24,12 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 		return;
 	}
 
+	unsigned long bit_mask = 0xFF;
+
 	// Message ID
 	m_message_id = 0;
 	for (int i = 0; i < 16; i++) {
-		m_message_id |= m_header[i];
+		m_message_id |= bit_mask & m_header[i];
 		if (i != 15)
 			m_message_id <<= CHAR_BIT;
 	}
@@ -63,7 +65,7 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	// Payload length
 	m_payload_len = 0;
 	for (int i = 19; i < HEADER_SIZE; i++) {
-		m_payload_len |= m_header[i];
+		m_payload_len |= bit_mask & m_header[i];
 		if (i != HEADER_SIZE-1)
 			m_payload_len <<= CHAR_BIT;
 	}
