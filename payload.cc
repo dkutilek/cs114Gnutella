@@ -344,7 +344,8 @@ void big_to_little_endian(unsigned long * dest, const char * payload,
 		len = sizeof (unsigned long);
 	for (unsigned long i = 0; i < len; i++) {
 		result |= payload[i];
-		result <<= CHAR_BIT;
+		if (i != len-1)
+			result <<= CHAR_BIT;
 	}
 	*dest = result;
 }
@@ -356,7 +357,8 @@ void big_to_little_endian(unsigned short * dest, const char * payload,
 		len = sizeof (unsigned short);
 	for (unsigned long i = 0; i < len; i++) {
 		result |= payload[i];
-		result <<= CHAR_BIT;
+		if (i != len-1)
+			result <<= CHAR_BIT;
 	}
 	*dest = result;
 }
