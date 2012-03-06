@@ -162,15 +162,15 @@ Result::Result(const char * result, unsigned long length) {
 	}
 }
 
-unsigned long Result::get_file_index() {
+unsigned long const Result::get_file_index() {
 	return m_file_index;
 }
 	
-unsigned long Result::get_file_size() {
+unsigned long const Result::get_file_size() {
 	return m_file_size;
 }
 
-string Result::get_file_name() {
+string const Result::get_file_name() {
 	return m_file_name;
 }
 
@@ -210,7 +210,7 @@ QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 	unsigned long len = 11;
 	
 	for (unsigned short i = 0; i < m_num_hits; i++) {
-		Result r = m_result_set.at(i);
+		Result r = result_set.at(i);
 		m_result_set.push_back(r);
 		memcpy(m_payload+len, r.get_payload(), r.get_payload_len());
 		len += r.get_payload_len();

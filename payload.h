@@ -63,9 +63,9 @@ public:
 	Result(unsigned long file_index, unsigned long file_size,
 			string m_file_name);
 	Result(const char *result, unsigned long length);
-	unsigned long get_file_index();
-	unsigned long get_file_size();
-	string get_file_name();
+	unsigned long const get_file_index();
+	unsigned long const get_file_size();
+	string const get_file_name();
 };
 
 class QueryHit_Payload : public Payload {
