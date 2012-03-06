@@ -555,6 +555,7 @@ public:
 		m_sharedDirectoryName = DEFAULT_SHARE_DIRECTORY;
 		m_messageCount = 0;
 		m_userNode = userNode;
+		m_kilobyteCount = 0;
 		
 		// Open the log
 		char str[15];
