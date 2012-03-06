@@ -27,12 +27,7 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	unsigned long bit_mask = 0xFF;
 
 	// Message ID
-	m_message_id = 0;
-	for (int i = 0; i < 16; i++) {
-		m_message_id |= bit_mask & m_header[i];
-		if (i != 15)
-			m_message_id <<= CHAR_BIT;
-	}
+	m_message_id = MessageId(header);
 
 	// Header Type
 	switch (m_header[16]) {
@@ -83,23 +78,18 @@ DescriptorHeader::DescriptorHeader(header_type type)
 		strcpy(m_header, "GNUTELLA OK\n\n");
 		return;
 	}
+
 }
 
-DescriptorHeader::DescriptorHeader(unsigned long messageID, header_type type,
+DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 		unsigned short time_to_live, unsigned short hops,
 		unsigned long payload_len)
 {
 	unsigned long bit_mask = 0xFF;
 
 	// Message ID
-	int i = 0, j = 15;
-	while (i < 16) {
-		m_header[i] = bit_mask & (messageID >> (j*CHAR_BIT));
-		i++;
-		j--;
-	}
-			
-	m_message_id = messageID;
+	memcpy(m_header, message_id.get_id(), MESSAGEID_LEN);
+	m_message_id = message_id;
 
 	// Header Type
 	m_type = type;
@@ -139,11 +129,15 @@ DescriptorHeader::DescriptorHeader(unsigned long messageID, header_type type,
 	m_payload_len = payload_len;	
 }
 
+DescriptorHeader::~DescriptorHeader() {
+
+}
+
 const char *DescriptorHeader::get_header() {
 	return m_header;
 }
 
-unsigned long DescriptorHeader::get_message_id() {
+MessageId& DescriptorHeader::get_message_id() {
 	return m_message_id;
 }
 

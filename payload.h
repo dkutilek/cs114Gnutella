@@ -10,6 +10,7 @@
 
 #include <string>
 #include <vector>
+#include <netinet/in.h>
 
 using namespace std;
 
@@ -28,16 +29,16 @@ public:
 
 class Pong_Payload : public Payload {
 private:
-	unsigned short m_port;
-	unsigned long m_ip_addr;
+	in_port_t m_port;
+	in_addr_t m_ip_addr;
 	unsigned long m_files_shared;
 	unsigned long m_kilo_shared;
 public:
-	Pong_Payload(unsigned short port, unsigned long ip_addr,
-		unsigned long files_shared, unsigned long kilo_shared);
+	Pong_Payload(in_port_t port, in_addr_t ip_addr, unsigned long files_shared,
+			unsigned long kilo_shared);
 	Pong_Payload(const char *payload);
-	unsigned short get_port();
-	unsigned long get_ip_addr();
+	in_port_t get_port();
+	in_addr_t get_ip_addr();
 	unsigned long get_files_shared();
 	unsigned long get_kilo_shared();
 };
@@ -59,7 +60,8 @@ private:
 	unsigned long m_file_size;
 	string m_file_name;
 public:
-	Result(unsigned long file_index, unsigned long file_size, string m_file_name);
+	Result(unsigned long file_index, unsigned long file_size,
+			string m_file_name);
 	Result(const char *result, unsigned long length);
 	unsigned long get_file_index();
 	unsigned long get_file_size();
@@ -69,18 +71,18 @@ public:
 class QueryHit_Payload : public Payload {
 private:
 	unsigned short m_num_hits;
-	unsigned short m_port;
-	unsigned long m_ip_addr;
+	in_port_t m_port;
+	in_addr_t m_ip_addr;
 	unsigned long m_speed;
 	vector<Result> m_result_set;
 	char m_servent_id[16];
 public:
-	QueryHit_Payload(unsigned short port, unsigned long ip_addr,
-		unsigned long speed, vector<Result> result_set, const char *servent_id);
+	QueryHit_Payload(in_port_t port, in_addr_t ip_addr, unsigned long speed,
+			vector<Result> result_set, const char *servent_id);
 	QueryHit_Payload(const char *payload, unsigned long payload_len);
 	unsigned short get_num_hits();
-	unsigned short get_port();
-	unsigned long get_ip_addr();
+	in_port_t get_port();
+	in_addr_t get_ip_addr();
 	vector<Result> get_result_set();
 	const char *get_servent_id();
 };
@@ -89,16 +91,16 @@ class Push_Payload : public Payload {
 private:
 	char m_servent_id[16];
 	unsigned long m_file_index;
-	unsigned long m_ip_addr;
-	unsigned short m_port;
+	in_port_t m_port;
+	in_addr_t m_ip_addr;
 public:
-	Push_Payload(const char *servent_id, unsigned long file_index, unsigned long ip_addr,
-		unsigned short port);
+	Push_Payload(const char *servent_id, unsigned long file_index,
+			in_port_t port, in_addr_t ip_addr);
 	Push_Payload(const char *payload);
 	const char *get_servent_id();
 	unsigned long get_file_index();
-	unsigned long get_ip_addr();
-	unsigned short get_port();
+	in_port_t get_port();
+	in_addr_t get_ip_addr();
 };
 
 #endif /* PAYLOAD_H_ */

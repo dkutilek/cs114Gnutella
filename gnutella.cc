@@ -21,6 +21,7 @@
 #include <dirent.h>	// Directory reading
 #include <unistd.h>
 #include <poll.h>
+#include "util.h"
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
@@ -35,48 +36,24 @@
 
 using namespace std;
 
-// Contains an address and port in big-endian format
-typedef struct peer {
-  in_addr address;
-  in_port_t port;
-} peer_t;
-
-struct peerComp {
-	bool operator() (const peer_t lhs, const peer_t rhs) {
-		return lhs.port < rhs.port;
-	}
-};
-
-string get_time() {
-	time_t rawtime;
-	struct tm * timeinfo;
-	char buffer[80];
-	time (&rawtime);
-	timeinfo = localtime(&rawtime);
-
-	strftime(buffer, 80, "%m/%d/%y %H:%M:%S", timeinfo);
-
-	return string(buffer);
-}
-
 class Gnutella {
 private:
 	int m_send, m_recv;
-	set<peer_t, peerComp> m_peers;  // A set of peers that this node knows about
-	peer_t m_self;	// Contains the port and address of own node
+	set<Peer> m_peers;  // A set of peers that this node knows about
+	Peer m_self;	// Contains the port and address of own node
 	fstream m_log;
 	unsigned char m_maximumUploadRate;		// in KB/s
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
 	vector<string> m_fileList;
 	unsigned long m_kilobyteCount;
-	unsigned int m_messageCount;
+	unsigned long m_messageCount;
 	bool m_userNode;
 
 	// Map from a peer that we forwarded a PING to, to a map from a descriptor
 	// ID to a peer who forwarded us the PING. Built when handling PING, used
 	// when handling PONG.
-	map<peer_t,map<unsigned long,peer_t>, peerComp> m_sentPingMap;
+	map<Peer,map<MessageId,Peer> > m_sentPingMap;
   
 	void error(string msg) {
 		m_log << "[ERR " << get_time() << "] " << msg << ": "
@@ -132,12 +109,8 @@ private:
 	
 	// Generate a unique message id using the port
 	// and number of messages sent.
-	unsigned long generateMessageId() {
-		m_messageCount++;
-		unsigned long id = m_messageCount;
-		id <<= CHAR_BIT*2;
-		id |= ntohs(m_self.port);
-		return id;
+	MessageId generateMessageId() {
+		return MessageId(m_self, &m_messageCount);
 	}
 
 	// Instantiate, bind, and listen on port m_port.
@@ -152,7 +125,7 @@ private:
 		memset(&nodeInfo, 0, sizeof(nodeInfo));
 		nodeInfo.sin_family = AF_INET;
 		nodeInfo.sin_addr.s_addr = INADDR_ANY;
-		nodeInfo.sin_port = m_self.port;
+		nodeInfo.sin_port = m_self.get_port();
 
 		int status = bind(m_recv, (sockaddr *) &nodeInfo, sizeof(nodeInfo));
 		if (status == -1) {
@@ -191,15 +164,15 @@ private:
 		sockaddr_in nodeInfo;
 		memset(&nodeInfo, 0, sizeof(nodeInfo));
 		nodeInfo.sin_family = AF_INET;
-		nodeInfo.sin_addr = m_self.address;
-		nodeInfo.sin_port = htons(ntohs(m_self.port)+1);
+		nodeInfo.sin_addr.s_addr = m_self.get_addr();
+		nodeInfo.sin_port = htons(ntohs(m_self.get_port())+1);
 
 		int status = bind(m_send, (sockaddr *) &nodeInfo, sizeof(nodeInfo));
 
 		if (status == -1) {
 			ostringstream oss;
 			oss << "Could not bind to send socket on port "
-					<< ntohs(m_self.port)+1;
+					<< ntohs(m_self.get_port())+1;
 			error(oss.str());
 			return -1;
 		}
@@ -322,12 +295,12 @@ private:
 	
 	// This function will set up a sockaddr_in structure for initializing
 	// a connection to a remote node
-	void remoteInfoSetup(sockaddr_in *remoteInfo, in_addr address,
+	void remoteInfoSetup(sockaddr_in *remoteInfo, in_addr_t address,
 		in_port_t port)
 	{
 		memset(remoteInfo, 0, sizeof(sockaddr_in));
 		remoteInfo->sin_family = AF_INET;
-		remoteInfo->sin_addr = address;
+		remoteInfo->sin_addr.s_addr = address;
 		remoteInfo->sin_port = port;
 	}
 
@@ -343,34 +316,31 @@ private:
 	void handlePing(int connection, DescriptorHeader *header,
 			in_addr address, in_port_t port) {
 		bool sent = false;
-		peer_t peer;
-		peer.address = address;
-		peer.port = htons(ntohs(port)-1);
+		Peer peer(address.s_addr, htons(ntohs(port)-1));
 
 		DescriptorHeader d(header->get_message_id(),
 				header->get_header_type(), header->get_time_to_live()-1,
 				header->get_hops()+1, header->get_payload_len());
 
 		// Pass PING along to all our peers
-		for (set<peer_t>::iterator it = m_peers.begin();
+		for (set<Peer>::iterator it = m_peers.begin();
 				it != m_peers.end(); it++) {
-			if ((*it).address.s_addr == peer.address.s_addr &&
-					(*it).port == peer.port) {
+			if ((*it) == peer) {
 				sendPong(*it, header->get_message_id());
 				sent = true;
 			}
 			else {
-				map<peer_t,map<unsigned long,peer_t> >::iterator x =
+				map<Peer,map<MessageId,Peer> >::iterator x =
 						m_sentPingMap.find(*it);
 
 				// If there isn't a map from the message id to a peer already
 				// associated with this peer, forward the PING.
 				if (x != m_sentPingMap.end()) {
-					map<unsigned long,peer_t>::iterator y =
+					map<MessageId,Peer>::iterator y =
 							x->second.find(header->get_message_id());
 					if (y == x->second.end()) {
 						sendToPeer(*it, &d, NULL);
-						x->second.insert(pair<unsigned long,peer_t>
+						x->second.insert(pair<MessageId,Peer>
 								(header->get_message_id(),*it));
 					}
 				}
@@ -378,17 +348,17 @@ private:
 				// There wasn't a map for this peer at all, forward the PING
 				else {
 					sendToPeer(*it, &d, NULL);
-					map<unsigned long,peer_t> idToPeer;
-					idToPeer.insert(pair<unsigned long,peer_t>
+					map<MessageId,Peer> idToPeer;
+					idToPeer.insert(pair<MessageId,Peer>
 							(header->get_message_id(),peer));
-					m_sentPingMap.insert(pair<peer_t,map<unsigned long,peer_t> >
+					m_sentPingMap.insert(pair<Peer,map<MessageId,Peer> >
 							(*it,idToPeer));
 				}
 			}
 		}
 
 		// Add to our list of peers if we can
-		set<peer_t>::iterator setIter = m_peers.find(peer);
+		set<Peer>::iterator setIter = m_peers.find(peer);
 		if (!sent && setIter == m_peers.end() && m_peers.size() < MAX_PEERS) {
 			m_peers.insert(peer);
 			sendPong(peer, header->get_message_id());
@@ -403,27 +373,25 @@ private:
 				readDescriptorPayload(connection, pong,
 						header->get_payload_len());
 
-		peer_t peer;
-		peer.address = address;
-		peer.port = htons(ntohs(port)-1);
+		Peer peer(address.s_addr, htons(ntohs(port)-1));
 
 		// Check if we need to pass this PONG along
-		map<peer_t,map<unsigned long,peer_t> >::iterator x =
+		map<Peer,map<MessageId,Peer> >::iterator x =
 				m_sentPingMap.find(peer);
 		if (x != m_sentPingMap.end()) {
-			map<unsigned long,peer_t>::iterator y =
+			map<MessageId,Peer>::iterator y =
 					x->second.find(header->get_message_id());
 			if (y != x->second.end()) {
 
 				// We might be the actual target
-				if (y->second.address.s_addr == m_self.address.s_addr &&
-					y->second.port == m_self.port) {
-					peer_t new_peer;
-					new_peer.address.s_addr = payload->get_ip_addr();
-					new_peer.port = htons(payload->get_port());
+				if (y->second == m_self) {
+					Peer new_peer(payload->get_ip_addr(), payload->get_port(),
+							payload->get_files_shared(),
+							payload->get_kilo_shared());
 					m_peers.insert(new_peer);
 					ostringstream oss;
-					oss << "New peer at " << payload->get_port() << " added";
+					oss << "New peer at " << ntohs(payload->get_port())
+							<< " added";
 					log(oss.str());
 				}
 				// If not send it along
@@ -486,10 +454,10 @@ private:
 	}
 
 	// Send a PONG to a given peer
-	void sendPong(peer_t peer, unsigned long messageId) {
+	void sendPong(Peer peer, MessageId& messageId) {
 		DescriptorHeader header(messageId, pong, DEFAULT_TTL,
 								DEFAULT_HOPS, PONG_LEN);
-		Pong_Payload payload(ntohs(m_self.port), m_self.address.s_addr,
+		Pong_Payload payload(m_self.get_port(), m_self.get_addr(),
 				m_fileList.size(), m_kilobyteCount);
 
 		sendToPeer(peer, &header, &payload);
@@ -497,22 +465,20 @@ private:
 
 	void sendToAddrPort(in_addr addr, in_port_t port, DescriptorHeader* header,
 			Payload* payload) {
-		peer_t peer;
-		peer.address = addr;
-		peer.port = port;
+		Peer peer(addr.s_addr, port);
 		sendToPeer(peer, header, payload);
 	}
 
 	// Send a header and a payload to a given peer.  This will only work if the
 	// node is not already actively listening on m_socket.  For CONNECT,
 	// RESPONSE, and PING headers, payload = NULL.
-	void sendToPeer(peer_t peer, DescriptorHeader* header, Payload* payload) {
+	void sendToPeer(Peer peer, DescriptorHeader* header, Payload* payload) {
 		// Set up the structure for connecting to the remote node
 		sockaddr_in nodeInfo;
-		remoteInfoSetup(&nodeInfo, peer.address, peer.port);
+		remoteInfoSetup(&nodeInfo, peer.get_addr(), peer.get_port());
 		if (acquireSendSocket() == -1) {
 			ostringstream oss;
-			oss << "Could not connect to peer at " << ntohs(peer.port);
+			oss << "Could not connect to peer at " << ntohs(peer.get_port());
 			log(oss.str());
 			closeSendSocket();
 			return;
@@ -523,7 +489,7 @@ private:
 				sizeof(nodeInfo));
 		if (status == -1) {
 			ostringstream oss;
-			oss << "Could not connect to peer at " << ntohs(peer.port);
+			oss << "Could not connect to peer at " << ntohs(peer.get_port());
 	  		error(oss.str());
 	  		closeSendSocket();
 	  		return;
@@ -532,13 +498,13 @@ private:
 		// Send a header followed by a payload
 		ostringstream oss;
 		oss << "Sending " << header->get_header_type() <<
-				" request to peer at " << ntohs(peer.port);
+				" request to peer at " << ntohs(peer.get_port());
 		log(oss.str());
 		status = send(m_send, header->get_header(), HEADER_SIZE, 0);
 		if (status != HEADER_SIZE) {
 			ostringstream logoss;
 			logoss << "Failed to send " << header->get_header_type() <<
-					" request to peer at " << ntohs(peer.port);
+					" request to peer at " << ntohs(peer.get_port());
 			error(logoss.str());
 			closeSendSocket();
 			return;
@@ -550,7 +516,7 @@ private:
 					(unsigned int) status != payload->get_payload_len()) {
 				ostringstream logoss;
 				logoss << "Failed to send " << header->get_header_type()
-						<< " payload to peer at " << ntohs(peer.port);
+						<< " payload to peer at " << ntohs(peer.get_port());
 				error(logoss.str());
 				closeSendSocket();
 				return;
@@ -589,8 +555,6 @@ public:
 		m_sharedDirectoryName = DEFAULT_SHARE_DIRECTORY;
 		m_messageCount = 0;
 		m_userNode = userNode;
-		m_self.port = htons(port);
-		m_self.address.s_addr = inet_addr("127.0.0.1");
 		
 		// Open the log
 		char str[15];
@@ -604,6 +568,9 @@ public:
 		
 		// Get the list of filenames that this node is willing to share
 		readSharedDirectoryFiles();
+
+		m_self = Peer(inet_addr("127.0.0.1"), htons(port),
+				(unsigned long) m_fileList.size(), m_kilobyteCount);
 
 		acquireListenSocket();
   	}
@@ -636,7 +603,8 @@ public:
 			if (header == NULL)
 				continue;
 
-			if (header->get_time_to_live() == 0)
+			if (header->get_header_type() != con &&
+					header->get_time_to_live() == 0)
 				continue;
 
 			ostringstream oss;
@@ -700,9 +668,7 @@ public:
 	// is an actual gnutella node.
   	void bootstrap(const char *address, int port) {
   		DescriptorHeader header(con);
-  		peer_t peer;
-  		peer.address.s_addr = inet_addr(address);
-  		peer.port = htons(port);
+  		Peer peer(inet_addr(address), htons(port));
   		sendToPeer(peer, &header, NULL);
 
   		// Accept the connection
@@ -729,51 +695,50 @@ public:
   	}
 
 	// Send a PING to a given peer
-	void sendPing(peer_t peer) {
-		DescriptorHeader header(generateMessageId(), ping, DEFAULT_TTL,
-				DEFAULT_HOPS, 0);
-
+	void sendPing(Peer peer) {
+		MessageId id = generateMessageId();
+		DescriptorHeader header(id, ping, DEFAULT_TTL, DEFAULT_HOPS, 0);
 		sendToPeer(peer, &header, NULL);
 
-		// Search for ourself in the sent ping map
-		map<peer_t,map<unsigned long,peer_t> >::iterator x =
-				m_sentPingMap.find(m_self);
+		// Search for the target peer in the sent ping map
+		map<Peer,map<MessageId,Peer> >::iterator x =
+				m_sentPingMap.find(peer);
 
 		// If there isn't a map from the message id to a peer already
-		// already associated with ourself, create one.
+		// already associated with the target peer, create one.
 		if (x == m_sentPingMap.end()) {
-			map<unsigned long,peer_t> idToPeer;
-			idToPeer.insert(pair<unsigned long,peer_t>
+			map<MessageId,Peer> idToPeer;
+			idToPeer.insert(pair<MessageId,Peer>
 					(header.get_message_id(), m_self));
-			m_sentPingMap.insert(pair<peer_t,map<unsigned long,peer_t> >
+			m_sentPingMap.insert(pair<Peer,map<MessageId,Peer> >
 						(peer,idToPeer));
 		}
 
 		// There was a map, but the message id wasn't in the inner map,
 		// add it.
 		else {
-			map<unsigned long,peer_t>::iterator y =
+			map<MessageId,Peer>::iterator y =
 					x->second.find(header.get_message_id());
 			if (y == x->second.end()) {
-				x->second.insert(pair<unsigned long,peer_t>
+				x->second.insert(pair<MessageId,Peer>
 						(header.get_message_id(), m_self));
 			}
 
 			// There was a mapping from the id to a peer, but it wasn't right.
 			// Fix that.
-			else if (y->second.address.s_addr != m_self.address.s_addr &&
-					 y->second.port != m_self.port) {
-				y->second = m_self;
+			else if (y->second == m_self) {
+				// Do something?
 			}
 		}
 	}
 
 	// Send a QUERY to a given peer
-	void sendQuery(peer_t peer, string searchCriteria)
+	void sendQuery(Peer peer, string searchCriteria)
 	{
 		Query_Payload payload(m_minimumDownloadRate, searchCriteria);
-		DescriptorHeader header(generateMessageId(), query, DEFAULT_TTL,
-				DEFAULT_HOPS, payload.get_payload_len());
+		MessageId id = generateMessageId();
+		DescriptorHeader header(id, query, DEFAULT_TTL,	DEFAULT_HOPS,
+				payload.get_payload_len());
 
 		sendToPeer(peer, &header, &payload);
 	}
@@ -787,11 +752,13 @@ public:
 			cin >> str;
 			if (str == "5") {
 				size_t i = 0;
-				vector<peer_t> peers_all, peers;
-				for (set<peer_t>::iterator p = m_peers.begin();
+				vector<Peer> peers_all, peers;
+				for (set<Peer>::iterator p = m_peers.begin();
 						p != m_peers.end(); p++) {
-					cout << i+1 << ". " << inet_ntoa(p->address) << " "
-							<< ntohs(p->port) << "\n";
+					in_addr addr;
+					addr.s_addr = p->get_addr();
+					cout << i+1 << ". " << inet_ntoa(addr) << " "
+							<< ntohs(p->get_port()) << "\n";
 					peers_all.push_back(*p);
 					i++;
 				}
@@ -818,7 +785,7 @@ PING.\nFor all peers input \"all\"\n";
 					else
 						break;
 				}
-				for (vector<peer_t>::iterator it = peers.begin();
+				for (vector<Peer>::iterator it = peers.begin();
 						it != peers.end(); it++)
 					sendPing(*it);
 
@@ -827,7 +794,7 @@ PING.\nFor all peers input \"all\"\n";
 			else if (str == "6") {
 				cout << "Please enter a filename to search for\n$? ";
 				cin >> str;
-				for (set<peer_t>::iterator it = m_peers.begin();
+				for (set<Peer>::iterator it = m_peers.begin();
 										it != m_peers.end(); it++)
 					sendQuery(*it, str);
 

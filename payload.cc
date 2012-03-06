@@ -5,19 +5,11 @@
  *      Author: drewkutilek
  */
 
-#include <climits>
 #include <string.h>
 #include <cstdlib>
 #include "payload.h"
+#include "util.h"
 
-void big_to_little_endian(unsigned long * dest, const char * payload,
-		unsigned long len);
-void big_to_little_endian(unsigned short * dest, const char * payload,
-		unsigned long len);
-void little_to_big_endian(char * dest, unsigned long value,
-		unsigned long len);
-void little_to_big_endian(char * dest, unsigned short value,
-		unsigned long len);
 
 /* Payload methods */
 
@@ -35,14 +27,14 @@ unsigned long Payload::get_payload_len() {
 
 /* Pong_Payload methods */
 
-Pong_Payload::Pong_Payload(unsigned short port, unsigned long ip_addr,
+Pong_Payload::Pong_Payload(in_port_t port, in_addr_t ip_addr,
 			unsigned long files_shared, unsigned long kilo_shared)
 {
 	m_payload_len = PONG_LEN;
 	m_payload = (char *) malloc(PONG_LEN);
 
 	// Port
-	little_to_big_endian(m_payload, port, 2);
+	memcpy(m_payload, &port, 2);
 	m_port = port;
 
 	// IP Address
@@ -64,7 +56,7 @@ Pong_Payload::Pong_Payload(const char * payload) {
 	memcpy(m_payload, payload, PONG_LEN);
 
 	// Port
-	big_to_little_endian(&m_port, m_payload, 2);
+	memcpy(&m_port, m_payload, 2);
 
 	// IP Address
 	memcpy(&m_ip_addr, m_payload+2, 4);
@@ -76,11 +68,11 @@ Pong_Payload::Pong_Payload(const char * payload) {
 	big_to_little_endian(&m_kilo_shared, m_payload+10, 4);
 }
 
-unsigned short Pong_Payload::get_port() {
+in_port_t Pong_Payload::get_port() {
 	return m_port;
 }
 	
-unsigned long Pong_Payload::get_ip_addr() {
+in_addr_t Pong_Payload::get_ip_addr() {
 	return m_ip_addr;
 }
 
@@ -184,7 +176,7 @@ string Result::get_file_name() {
 
 /* QueryHit_Payload methods */
 
-QueryHit_Payload::QueryHit_Payload(unsigned short port, unsigned long ip_addr,
+QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 			unsigned long speed, vector<Result> result_set,
 			const char * servent_id)
 {
@@ -203,7 +195,7 @@ QueryHit_Payload::QueryHit_Payload(unsigned short port, unsigned long ip_addr,
 	m_payload = (char *) malloc (m_payload_len);
 
 	// Port
-	little_to_big_endian(m_payload+1, port, 2);
+	memcpy(m_payload+1, &port, 2);
 	m_port = port;
 
 	// IP Address
@@ -238,7 +230,7 @@ QueryHit_Payload::QueryHit_Payload(const char * payload, unsigned long payload_l
 	big_to_little_endian(&m_num_hits, m_payload, 1);
 
 	// Port
-	big_to_little_endian(&m_port, m_payload+1, 2);
+	memcpy(&m_port, m_payload+1, 2);
 
 	// IP Address
 	memcpy(&m_ip_addr, m_payload+3, 4);
@@ -263,11 +255,11 @@ unsigned short QueryHit_Payload::get_num_hits() {
 	return m_num_hits;
 }
 
-unsigned short QueryHit_Payload::get_port() {
+in_port_t QueryHit_Payload::get_port() {
 	return m_port;
 }
 	
-unsigned long QueryHit_Payload::get_ip_addr() {
+in_addr_t QueryHit_Payload::get_ip_addr() {
 	return m_ip_addr;
 }
 
@@ -282,7 +274,7 @@ const char *QueryHit_Payload::get_servent_id() {
 /* Push_Payload methods */
 
 Push_Payload::Push_Payload(const char * servent_id, unsigned long file_index,
-			unsigned long ip_addr, unsigned short port)
+		in_port_t port, in_addr_t ip_addr)
 {
 	m_payload_len = PUSH_LEN;
 	m_payload = (char *) malloc(m_payload_len);
@@ -296,11 +288,11 @@ Push_Payload::Push_Payload(const char * servent_id, unsigned long file_index,
 	m_file_index = file_index;
 
 	// IP Address
-	memcpy(m_payload+3, &ip_addr, 4);
+	memcpy(m_payload+20, &ip_addr, 4);
 	m_ip_addr = ip_addr;
 
 	// Port
-	little_to_big_endian(m_payload+24, port, 2);
+	memcpy(m_payload+24, &port, 2);
 	m_port = port;
 }
 
@@ -318,7 +310,7 @@ Push_Payload::Push_Payload(const char * payload) {
 	memcpy(&m_ip_addr, m_payload+20, 4);
 
 	// Port
-	big_to_little_endian(&m_port, m_payload+24, 2);
+	memcpy(&m_port, m_payload+24, 2);
 }
 
 const char *Push_Payload::get_servent_id() {
@@ -329,60 +321,10 @@ unsigned long Push_Payload::get_file_index() {
 	return m_file_index;
 }
 
-unsigned long Push_Payload::get_ip_addr() {
+in_addr_t Push_Payload::get_ip_addr() {
 	return m_ip_addr;
 }
 
-unsigned short Push_Payload::get_port() {
+in_port_t Push_Payload::get_port() {
 	return m_port;
-}
-
-void big_to_little_endian(unsigned long * dest, const char * payload,
-		unsigned long len) {
-	unsigned long result = 0;
-	if (len > sizeof (unsigned long))
-		len = sizeof (unsigned long);
-	for (unsigned long i = 0; i < len; i++) {
-		result |= payload[i];
-		if (i != len-1)
-			result <<= CHAR_BIT;
-	}
-	*dest = result;
-}
-
-void big_to_little_endian(unsigned short * dest, const char * payload,
-		unsigned long len) {
-	unsigned short result = 0;
-	if (len > sizeof (unsigned short))
-		len = sizeof (unsigned short);
-	for (unsigned long i = 0; i < len; i++) {
-		result |= payload[i];
-		if (i != len-1)
-			result <<= CHAR_BIT;
-	}
-	*dest = result;
-}
-
-void little_to_big_endian(char * dest, unsigned long value,
-		unsigned long len) {
-	unsigned long i = 0, j = len, bit_mask = 0xFF;
-	if (len > sizeof (unsigned long))
-		len = sizeof (unsigned long);
-	while (i < len) {
-		dest[i] = bit_mask & (value >> (j*CHAR_BIT));
-		i++;
-		j--;
-	}
-}
-
-void little_to_big_endian(char * dest, unsigned short value,
-		unsigned long len) {
-	unsigned long i = 0, j = len, bit_mask = 0xFF;
-	if (len > sizeof (unsigned short))
-		len = sizeof (unsigned short);
-	while (i < len) {
-		dest[i] = bit_mask & (value >> (j*CHAR_BIT));
-		i++;
-		j--;
-	}
 }
