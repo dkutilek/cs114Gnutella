@@ -13,10 +13,6 @@
 
 #define HEADER_SIZE 23
 
-enum header_type {
-	con, resp, ping, pong, query, queryHit, push
-};
-
 class DescriptorHeader {
 private:
 	char m_header[HEADER_SIZE];

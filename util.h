@@ -60,10 +60,17 @@ public:
 	const char * get_id() {return m_id;}
 };
 
+enum header_type {
+	con, resp, ping, pong, query, queryHit, push
+};
+
+// Convert header_type to a string
+extern string type_to_str(header_type type);
+
 // Get the time as a string
 string get_time();
 
-// Endian conversion
+// Endian conversions
 void big_to_little_endian(unsigned long * dest, const char * payload,
 		unsigned long len);
 void big_to_little_endian(unsigned short * dest, const char * payload,

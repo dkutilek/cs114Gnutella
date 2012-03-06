@@ -121,6 +121,12 @@ private:
 			exit(1);
 		}
 
+		int tr = 1;
+		if (setsockopt(m_recv,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
+			error("Could not set socket option");
+			exit(1);
+		}
+
 		sockaddr_in nodeInfo;
 		memset(&nodeInfo, 0, sizeof(nodeInfo));
 		nodeInfo.sin_family = AF_INET;
@@ -156,7 +162,7 @@ private:
 		}
 
 		int tr = 1;
-		if (setsockopt(m_send,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1 ) {
+		if (setsockopt(m_send,SOL_SOCKET,SO_REUSEADDR,&tr,sizeof(int)) == -1) {
 			error("Could not set socket option");
 			return -1;
 		}
@@ -188,7 +194,8 @@ private:
 	// The return value is the connection handle. The optional argument
 	// timeout determines how long to wait for a connection. Passing 0 in
 	// as the timeout means no timeout, it blocks indefinitely.
-	int getConnectionRequest(sockaddr_in *remoteInfo, unsigned int timeout = 0) {
+	int getConnectionRequest(sockaddr_in *remoteInfo,
+			unsigned int timeout = 0) {
 		memset(remoteInfo, 0, sizeof(sockaddr_in));
 		socklen_t addrLength = sizeof (sockaddr);
 
@@ -397,8 +404,9 @@ private:
 				// If not send it along
 				else {
 					DescriptorHeader d(header->get_message_id(),
-							header->get_header_type(), header->get_time_to_live()-1,
-							header->get_hops()+1, header->get_payload_len());
+							header->get_header_type(),
+							header->get_time_to_live()-1, header->get_hops()+1,
+							header->get_payload_len());
 					sendToPeer(y->second, &d, payload);
 				}
 
@@ -497,13 +505,14 @@ private:
 
 		// Send a header followed by a payload
 		ostringstream oss;
-		oss << "Sending " << header->get_header_type() <<
+		oss << "Sending " << type_to_str(header->get_header_type()) <<
 				" request to peer at " << ntohs(peer.get_port());
 		log(oss.str());
 		status = send(m_send, header->get_header(), HEADER_SIZE, 0);
 		if (status != HEADER_SIZE) {
 			ostringstream logoss;
-			logoss << "Failed to send " << header->get_header_type() <<
+			logoss << "Failed to send "
+					<< type_to_str(header->get_header_type()) <<
 					" request to peer at " << ntohs(peer.get_port());
 			error(logoss.str());
 			closeSendSocket();
@@ -515,7 +524,8 @@ private:
 			if (status < 0 ||
 					(unsigned int) status != payload->get_payload_len()) {
 				ostringstream logoss;
-				logoss << "Failed to send " << header->get_header_type()
+				logoss << "Failed to send "
+						<< type_to_str(header->get_header_type())
 						<< " payload to peer at " << ntohs(peer.get_port());
 				error(logoss.str());
 				closeSendSocket();
@@ -531,7 +541,8 @@ private:
 		int status = send(connection, header->get_header(), HEADER_SIZE, 0);
 		if (status == -1) {
 			ostringstream logoss;
-			logoss << "Failed to send " << header->get_header_type()
+			logoss << "Failed to send "
+					<< type_to_str(header->get_header_type())
 					<< " request to peer at on connection " << connection;
 			error(logoss.str());
 			return;
@@ -542,7 +553,8 @@ private:
 			if (status < 0 ||
 					(unsigned int) status != payload->get_payload_len()) {
 				ostringstream logoss;
-				logoss << "Failed to send " << header->get_header_type()
+				logoss << "Failed to send "
+						<< type_to_str(header->get_header_type())
 						<< " payload to peer on connection " << connection;
 				error(logoss.str());
 				return;
@@ -684,7 +696,7 @@ public:
 		if (response != NULL && response->get_header_type() == resp) {
 			log("Connected to bootstrap host.");
 			// Add to peer list.
-			m_peers.insert(peer);
+			//m_peers.insert(peer);
 		}
 		else {
 			log("The bootstrap host rejected the connect request.");
@@ -693,6 +705,9 @@ public:
 		
 		delete response;
 		close(connection);	// Close the connection and free the socket
+
+		sendPing(peer);
+		acceptConnections(PING_TIMEOUT);
   	}
 
 	// Send a PING to a given peer
@@ -749,7 +764,8 @@ public:
 	{
 		string str;
 		while (true) {
-			cout << "5) Ping\n6) Query\n7) Exit to network.sh\n#? ";
+			cout << "5) Ping\n6) Query\n7) Accept Connections\n\
+8) Exit to network.sh\n#? ";
 			cin >> str;
 			if (str == "5") {
 				size_t i = 0;
@@ -793,7 +809,7 @@ PING.\nFor all peers input \"all\"\n";
 				acceptConnections(PING_TIMEOUT);
 			}
 			else if (str == "6") {
-				cout << "Please enter a filename to search for\n$? ";
+				cout << "Please enter a filename to search for\n#? ";
 				cin >> str;
 				for (set<Peer>::iterator it = m_peers.begin();
 										it != m_peers.end(); it++)
@@ -801,7 +817,18 @@ PING.\nFor all peers input \"all\"\n";
 
 				acceptConnections(SENDQUERY_TIMEOUT);
 			}
-			else if (str == "7")
+			else if (str == "7") {
+				cout << "Please enter how many seconds to listen\n#? ";
+				cin >> str;
+				int timeout = atoi(str.c_str());
+				if (timeout == 0) {
+					acceptConnections(5);
+				}
+				else {
+					acceptConnections(timeout);
+				}
+			}
+			else if (str == "8")
 				return;
 			else
 				cout << "Bad option\n";

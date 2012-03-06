@@ -118,6 +118,26 @@ bool MessageId::operator >(const MessageId &rhs) const {
 	return false;
 }
 
+string type_to_str(header_type type) {
+	switch (type) {
+	case con:
+		return "CONNECT";
+	case resp:
+		return "RESPONSE";
+	case ping:
+		return "PING";
+	case pong:
+		return "PONG";
+	case query:
+		return "QUERY";
+	case queryHit:
+		return "QUERYHIT";
+	case push:
+		return "PUSH";
+	}
+	return "";
+}
+
 string get_time() {
 	time_t rawtime;
 	struct tm * timeinfo;
