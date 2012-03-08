@@ -37,6 +37,10 @@ bool Peer::operator ==(const Peer &other) const {
 	return this->m_addr == other.m_addr && this->m_port == other.m_port;
 }
 
+bool Peer::operator!=(const Peer &other) const {
+	return this->m_addr != other.m_addr || this->m_port != other.m_port;
+}
+
 bool Peer::operator <(const Peer &rhs) const {
 	if (this->m_addr == rhs.m_addr) {
 		return this->m_port < rhs.m_port;

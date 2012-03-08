@@ -33,6 +33,7 @@
 #define DEFAULT_HOPS 7
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
+#define CONNECT_TIMEOUT 5
 
 using namespace std;
 
@@ -213,7 +214,7 @@ private:
 			else if (retval == 0)
 				return -1;
 			else
-				return accept(m_recv, (sockaddr *) remoteInfo, &addrLength);
+			 	return accept(m_recv, (sockaddr *) remoteInfo, &addrLength);
 		}
 		else
 			return accept(m_recv, (sockaddr *) remoteInfo, &addrLength);
@@ -339,27 +340,27 @@ private:
 			else {
 				map<Peer,map<MessageId,Peer> >::iterator x =
 						m_sentPingMap.find(*it);
-
 				// If there isn't a map from the message id to a peer already
-				// associated with this peer, forward the PING.
+				// associated with this peer
 				if (x != m_sentPingMap.end()) {
 					map<MessageId,Peer>::iterator y =
 							x->second.find(header->get_message_id());
 					if (y == x->second.end()) {
-						sendToPeer(*it, &d, NULL);
 						x->second.insert(pair<MessageId,Peer>
-								(header->get_message_id(),*it));
+								(header->get_message_id(),peer));
+						// Forward the PING
+						sendToPeer(*it, &d, NULL);
 					}
 				}
-
-				// There wasn't a map for this peer at all, forward the PING
+				// There wasn't a map for this peer at all
 				else {
-					sendToPeer(*it, &d, NULL);
 					map<MessageId,Peer> idToPeer;
 					idToPeer.insert(pair<MessageId,Peer>
 							(header->get_message_id(),peer));
 					m_sentPingMap.insert(pair<Peer,map<MessageId,Peer> >
 							(*it,idToPeer));
+					// Forward the PING
+					sendToPeer(*it, &d, NULL);
 				}
 			}
 		}
@@ -367,6 +368,9 @@ private:
 		// Add to our list of peers if we can
 		set<Peer>::iterator setIter = m_peers.find(peer);
 		if (!sent && setIter == m_peers.end() && m_peers.size() < MAX_PEERS) {
+			ostringstream oss;
+			oss << "New peer at " << ntohs(peer.get_port()) << " added";
+			log(oss.str());
 			m_peers.insert(peer);
 			sendPong(peer, header->get_message_id());
 		}
@@ -395,11 +399,22 @@ private:
 					Peer new_peer(payload->get_ip_addr(), payload->get_port(),
 							payload->get_files_shared(),
 							payload->get_kilo_shared());
-					m_peers.insert(new_peer);
-					ostringstream oss;
-					oss << "New peer at " << ntohs(payload->get_port())
-							<< " added";
-					log(oss.str());
+					if (new_peer != m_self) {
+						if (m_peers.find(new_peer) != m_peers.end()) {
+							ostringstream oss;
+							oss << "Updated peer at "
+									<< ntohs(payload->get_port());
+							log(oss.str());
+							m_peers.insert(new_peer);
+						}
+						else if (m_peers.size() < MAX_PEERS){
+							ostringstream oss;
+							oss << "New peer at " << ntohs(payload->get_port())
+									<< " added";
+							log(oss.str());
+							m_peers.insert(new_peer);
+						}
+					}
 				}
 				// If not send it along
 				else {
@@ -408,10 +423,10 @@ private:
 							header->get_time_to_live()-1, header->get_hops()+1,
 							header->get_payload_len());
 					sendToPeer(y->second, &d, payload);
-				}
 
-				// Erase saved PING
-				x->second.erase(y->first);
+					// Erase saved PING
+					// x->second.erase(y->first);
+				}
 			}
 		}
 		delete payload;
@@ -477,30 +492,45 @@ private:
 		sendToPeer(peer, header, payload);
 	}
 
+	// Attempt to connect to a peer for CONNECT_TIMEOUT seconds
+	bool connectToPeer(Peer peer) {
+		// Set up the structure for connecting to the remote node
+		sockaddr_in nodeInfo;
+		remoteInfoSetup(&nodeInfo, peer.get_addr(), peer.get_port());
+
+		// Try to start a connection
+		int status;
+		time_t starttime = time(NULL);
+		while ((status = connect(m_send, (sockaddr *) &nodeInfo,
+				sizeof(nodeInfo))) == -1 &&
+				difftime(time(NULL), starttime) < CONNECT_TIMEOUT){};
+		if (status == -1) {
+			ostringstream oss;
+			oss << "Could not connect to peer at " << ntohs(peer.get_port());
+			error(oss.str());
+			closeSendSocket();
+			return false;
+		}
+		return true;
+	}
+
 	// Send a header and a payload to a given peer.  This will only work if the
 	// node is not already actively listening on m_socket.  For CONNECT,
 	// RESPONSE, and PING headers, payload = NULL.
 	void sendToPeer(Peer peer, DescriptorHeader* header, Payload* payload) {
-		// Set up the structure for connecting to the remote node
-		sockaddr_in nodeInfo;
-		remoteInfoSetup(&nodeInfo, peer.get_addr(), peer.get_port());
 		if (acquireSendSocket() == -1) {
 			ostringstream oss;
-			oss << "Could not connect to peer at " << ntohs(peer.get_port());
+			oss << "Could not acquire socket to peer at "
+					<< ntohs(peer.get_port());
 			log(oss.str());
 			closeSendSocket();
 			return;
 		}
 
-		// Try to start a connection
-		int status = connect(m_send, (sockaddr *) &nodeInfo,
-				sizeof(nodeInfo));
-		if (status == -1) {
-			ostringstream oss;
-			oss << "Could not connect to peer at " << ntohs(peer.get_port());
-	  		error(oss.str());
-	  		closeSendSocket();
-	  		return;
+		if (!connectToPeer(peer)) {
+			// Peer no longer active
+			m_peers.erase(peer);
+			return;
 		}
 
 		// Send a header followed by a payload
@@ -508,7 +538,7 @@ private:
 		oss << "Sending " << type_to_str(header->get_header_type()) <<
 				" request to peer at " << ntohs(peer.get_port());
 		log(oss.str());
-		status = send(m_send, header->get_header(), HEADER_SIZE, 0);
+		int status = send(m_send, header->get_header(), HEADER_SIZE, 0);
 		if (status != HEADER_SIZE) {
 			ostringstream logoss;
 			logoss << "Failed to send "
@@ -682,31 +712,30 @@ public:
   	void bootstrap(const char *address, int port) {
   		DescriptorHeader header(con);
   		Peer peer(inet_addr(address), htons(port));
-  		sendToPeer(peer, &header, NULL);
 
-  		// Accept the connection
+  		// Attempt to Bootstrap
   		sockaddr_in nodeInfo;
-  		int connection = getConnectionRequest(&nodeInfo);
+  		int connection;
+  		DescriptorHeader *response;
 
-		// Get the response
-		DescriptorHeader *response = readDescriptorHeader(connection);
-		
-		// If the remote node replies correctly, we can use other messages,
-		// otherwise, the node should fail.
-		if (response != NULL && response->get_header_type() == resp) {
-			log("Connected to bootstrap host.");
-			// Add to peer list.
-			//m_peers.insert(peer);
-		}
-		else {
-			log("The bootstrap host rejected the connect request.");
-			exit(1);
-		}
+  		sendToPeer(peer, &header, NULL);
+  		while (true) {
+  			if ((connection = getConnectionRequest(&nodeInfo,
+  	  				CONNECT_TIMEOUT)) == -1)
+  				sendToPeer(peer, &header, NULL);
+  			// Get the response
+  			else if ((response = readDescriptorHeader(connection)) != NULL &&
+  					response->get_header_type() == resp) {
+  				log("Connected to bootstrap host.");
+  				break;
+  			}
+  		}
 		
 		delete response;
 		close(connection);	// Close the connection and free the socket
 
 		sendPing(peer);
+		// TODO wait on peer to respond with pong before going forward
 		acceptConnections(PING_TIMEOUT);
   	}
 

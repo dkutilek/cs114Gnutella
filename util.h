@@ -28,6 +28,7 @@ public:
 	Peer();
 
 	bool operator==(const Peer &other) const;
+	bool operator!=(const Peer &other) const;
 	bool operator <(const Peer &rhs) const;
 	bool operator >(const Peer &rhs) const;
 	Peer& operator=(const Peer &rhs);
