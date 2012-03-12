@@ -11,17 +11,19 @@
 #include "util.h"
 using namespace std;
 
-Peer::Peer(in_addr_t addr, in_port_t port, unsigned long numSharedFiles,
+Peer::Peer(in_addr_t addr, in_port_t port, int socket, unsigned long numSharedFiles,
 		unsigned long numSharedKilobytes) {
 	m_addr = addr;
 	m_port = port;
+	m_socket = socket;
 	m_numSharedFiles = numSharedFiles;
 	m_numSharedKilobytes = numSharedKilobytes;
 }
 
-Peer::Peer(in_addr_t addr, in_port_t port) {
+Peer::Peer(in_addr_t addr, in_port_t port, int socket) {
 	m_addr = addr;
 	m_port = port;
+	m_socket = socket;
 	m_numSharedFiles = 0;
 	m_numSharedKilobytes = 0;
 }
@@ -29,6 +31,7 @@ Peer::Peer(in_addr_t addr, in_port_t port) {
 Peer::Peer() {
 	m_addr = 0;
 	m_port = 0;
+	m_socket = 0;
 	m_numSharedFiles = 0;
 	m_numSharedKilobytes = 0;
 }

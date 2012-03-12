@@ -20,11 +20,12 @@ class Peer {
 private:
 	in_addr_t m_addr;
 	in_port_t m_port;
+	int m_socket;
 	unsigned long m_numSharedFiles, m_numSharedKilobytes;
 public:
-	Peer(in_addr_t addr, in_port_t port, unsigned long numSharedFiles,
+	Peer(in_addr_t addr, in_port_t port, int socket, unsigned long numSharedFiles,
 			unsigned long numSharedKilobytes);
-	Peer(in_addr_t addr, in_port_t port);
+	Peer(in_addr_t addr, in_port_t port, int socket);
 	Peer();
 
 	bool operator==(const Peer &other) const;
@@ -35,11 +36,13 @@ public:
 
 	void set_addr(in_addr_t addr) {m_addr = addr;}
 	void set_port(in_port_t port) {m_port = port;}
+	void set_socket(int socket) {m_socket = socket;}
 	void set_numSharedFiles(unsigned long x) {m_numSharedFiles = x;}
 	void set_numSharedKilobytes(unsigned long x) {m_numSharedKilobytes = x;}
 
 	in_addr_t get_addr() const {return m_addr;}
 	in_port_t get_port() const {return m_port;}
+	int get_socket() const {return m_socket;}
 	unsigned long get_numSharedFiles() const {return m_numSharedFiles;}
 	unsigned long get_numSharedKilobytes() const {return m_numSharedKilobytes;}
 };
