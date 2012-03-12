@@ -620,6 +620,17 @@ public:
   		m_userNode = true;
   	}
 
+  	/**
+  	 * This function checks if the connection on the socket associated
+  	 * with a peer has been closed from the remote end.
+  	 */
+  	bool connectionClosed(Peer peer) {
+  		char buffer[HEADER_SIZE];
+  		int bytesRead = recv(peer.get_socket(), buffer, HEADER_SIZE, MSG_PEEK);
+
+  		return bytesRead == 0;
+  	}
+
 	/**
 	 * This function handles requests sent to this node from other peers
 	 * with open connections.
@@ -684,6 +695,7 @@ public:
   	 */
   	void acceptConnections(unsigned int timeout = 0) {
   		time_t starttime = time(NULL);
+  		ostringstream oss;
 
   		while (timeout == 0 || difftime(time(NULL), starttime) < timeout) {
   			// Check if there are connections to accept
@@ -697,7 +709,6 @@ public:
   				DescriptorHeader *message = readDescriptorHeader(peer);
 
   				if (message != NULL && message->get_header_type() == con) {
-					ostringstream oss;
   					oss << "Received CONNECT from peer at " << 
 							ntohs(remoteInfo.sin_port);
   					log(oss.str());
@@ -720,6 +731,12 @@ public:
 							" added";
   					  	log(oss.str());
   					  	m_peers.insert(peer);
+  					}
+  					// Else the peer is already known, or max peers have been
+  					// reached
+  					else {
+  						// Reject the connection
+  						close(connection);
   					}
   				}
 
@@ -749,10 +766,22 @@ public:
 
   				if (rv > 0) {
   					for (set<Peer>::iterator iter = m_peers.begin();
-  							iter != m_peers.end(); iter++)
+  							iter != m_peers.end(); ++iter)
   					{
   						if (FD_ISSET(iter->get_socket(), &fds)) {
-  							handleRequest(*iter);
+  							// If the remote end closed the connection, close
+  							// this end's socket and delete the peer
+  							if (connectionClosed(*iter)) {
+  								oss << "Peer " << ntohs(iter->get_port()) <<
+  										" closed the connection.";
+  								log(oss.str());
+
+  								close(iter->get_socket());
+  								m_peers.erase(iter);
+  							}
+  							else {
+  								handleRequest(*iter);
+  							}
   						}
   					}
   				}
