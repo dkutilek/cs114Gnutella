@@ -384,12 +384,12 @@ private:
 		}
 	}
 
-/*
+
 	// This function gets called when the node receives a PONG message.
 	void handlePong(DescriptorHeader *header, Peer peer) {
 		// Get the payload
 		Pong_Payload *payload = (Pong_Payload *) 
-				readDescriptorPayload(peer, header);
+				readDescriptorPayload(peer, *header);
 
 		// Check if we need to pass this PONG along
 		map<Peer,map<MessageId,Peer> >::iterator x = m_sentPingMap.find(peer);
@@ -401,9 +401,11 @@ private:
 			if (y != x->second.end()) {
 				// We might be the actual target
 				if (y->second == m_self) {
-					Peer new_peer(payload->get_ip_addr(), payload->get_port(),
+					/*Peer new_peer(payload->get_ip_addr(), payload->get_port(),
+							0,
 							payload->get_files_shared(),
 							payload->get_kilo_shared());
+
 					if (new_peer != m_self) {
 						if (m_peers.find(new_peer) != m_peers.end()) {
 							ostringstream oss;
@@ -419,6 +421,21 @@ private:
 							log(oss.str());
 							m_peers.insert(new_peer);
 						}
+					}*/
+
+					int sock = acquireSendSocket();
+					Peer new_peer(payload->get_ip_addr(), payload->get_port(),
+							sock, payload->get_files_shared(),
+							payload->get_kilo_shared());
+					set<Peer>::iterator iter = m_peers.find(new_peer);
+
+					// Connect to the peer if we don't already know about it
+					// and we can accept more peers.
+					if (iter == m_peers.end() && m_peers.size() < MAX_PEERS) {
+						gnutellaConnect(new_peer);
+					}
+					else {
+						close(sock);
 					}
 				}
 				// If not send it along
@@ -436,7 +453,7 @@ private:
 		}
 		delete payload;
 	}
-
+/*
 	// This function gets called when the node receives a QUERY message.
 	void handleQuery(int connection, DescriptorHeader *header,
 			in_addr address, in_port_t port) {
@@ -480,6 +497,50 @@ private:
 
 		delete payload;
 	}*/
+
+	/**
+	 * This function will try to connect to a peer using the gnutella protocol.
+	 * If the remote peer responds correctly, it will be added to the list of
+	 * known peers.
+	 */
+	void gnutellaConnect(Peer peer) {
+	  	// Try to connect through TCP to peer.
+	  	if (connectToPeer(peer)) {
+	  		// Send a connect message
+	  		DescriptorHeader request(con);
+	  		sendToPeer(peer, &request, NULL);
+
+	  		// Get the response
+	  		DescriptorHeader *response;
+	  		response = readDescriptorHeader(peer);
+
+	  		// If it's the correct response, try to add to our list of peers
+	  		if (response != NULL && response->get_header_type() == resp) {
+	  			log("Connected to peer.");
+
+	  			set<Peer>::iterator iter = m_peers.find(peer);
+
+	  			// Make sure the peer isn't already known, and we have room
+	  			// for it
+	  			if (iter == m_peers.end() && m_peers.size() < MAX_PEERS) {
+	  				ostringstream oss;
+	  				oss << "New peer at " << ntohs(peer.get_port()) << " added";
+	  				log(oss.str());
+
+	  				m_peers.insert(peer);
+	  			}
+	  			else {
+	  				close(peer.get_socket());
+	  			}
+	  		}
+	  		else {
+	  			log("Peer rejected CONNECT request.");
+	  			close(peer.get_socket());
+	  		}
+
+	  		delete response;
+	  	}
+	}
 
 	// Send a PONG to a given peer
 	void sendPong(Peer peer, MessageId& messageId) {
@@ -651,7 +712,7 @@ public:
 		// Handle requests
 		switch (header->get_header_type()) {
 		case con:
-			// do nothing
+			// do nothing, an existing peer should not be sending this message.
 			break;
 		case ping:
 			oss << "Received PING from peer at " << ntohs(peer.get_port());
@@ -661,7 +722,7 @@ public:
 		case pong:
 			oss << "Received PONG from peer at " << ntohs(peer.get_port());
 			log(oss.str());
-			//handlePong(connection, header,remoteInfo.sin_addr, remoteInfo.sin_port);
+			handlePong(header, peer);
 			break;
 		case query:
 			oss << "Received QUERY from peer at " << ntohs(peer.get_port());
@@ -695,7 +756,6 @@ public:
   	 */
   	void acceptConnections(unsigned int timeout = 0) {
   		time_t starttime = time(NULL);
-  		ostringstream oss;
 
   		while (timeout == 0 || difftime(time(NULL), starttime) < timeout) {
   			// Check if there are connections to accept
@@ -709,27 +769,24 @@ public:
   				DescriptorHeader *message = readDescriptorHeader(peer);
 
   				if (message != NULL && message->get_header_type() == con) {
-  					oss << "Received CONNECT from peer at " << 
-							ntohs(remoteInfo.sin_port);
-  					log(oss.str());
-
-  					// Send an acknowledgement of the CONNECT request
-  					DescriptorHeader response(resp);
-					oss << "Sending RESPONSE to peer at " <<
-						ntohs(remoteInfo.sin_port);
-					log(oss.str());
+  					ostringstream connect_oss;
+  					connect_oss << "Received CONNECT from peer at " <<
+							ntohs(remoteInfo.sin_port) << ". ";
+  					log(connect_oss.str());
 					
-  					sendToPeer(peer, &response, NULL);
-
-  					// Add the peer to the list of known peers
+  					// Check if we can add the peer
   					set<Peer>::iterator setIter = m_peers.find(peer);
 
   					if (setIter == m_peers.end() && 
 						m_peers.size() < MAX_PEERS)
 					{
-  					  	oss << "New peer at " << ntohs(peer.get_port()) << 
-							" added";
-  					  	log(oss.str());
+  						// Send an acknowledgement of the CONNECT request
+  						DescriptorHeader response(resp);
+  						sendToPeer(peer, &response, NULL);
+
+  						ostringstream new_peer_oss;
+  					  	new_peer_oss << "Adding new peer.";
+  					  	log(new_peer_oss.str());
   					  	m_peers.insert(peer);
   					}
   					// Else the peer is already known, or max peers have been
@@ -772,6 +829,7 @@ public:
   							// If the remote end closed the connection, close
   							// this end's socket and delete the peer
   							if (connectionClosed(*iter)) {
+  								ostringstream oss;
   								oss << "Peer " << ntohs(iter->get_port()) <<
   										" closed the connection.";
   								log(oss.str());
@@ -798,35 +856,7 @@ public:
   		int s = acquireSendSocket();
   		Peer peer(inet_addr(address), htons(port), s);
 
-  		// Connect to peer
-  		if (!connectToPeer(peer)) {
-  			log("Timed out trying to connect to bootstrap peer.");
-  			return;
-  		}
-
-  		// Send a connect message
-  		DescriptorHeader header(con);
-  		sendToPeer(peer, &header, NULL);
-
-  		// Get the response
-  		DescriptorHeader *response;
-  		response = readDescriptorHeader(peer);
-
-  		if (response != NULL && response->get_header_type() == resp) {
-  			log("Connected to bootstrap host.");
-
-  			// Add to our list of peers if we can
-  			set<Peer>::iterator setIter = m_peers.find(peer);
-
-  			if (setIter == m_peers.end() && m_peers.size() < MAX_PEERS) {
-  				ostringstream oss;
-  				oss << "New peer at " << ntohs(peer.get_port()) << " added";
-  				log(oss.str());
-  				m_peers.insert(peer);
-  			}
-  		}
-		
-		delete response;
+  		gnutellaConnect(peer);
   	}
 
 	// Send a PING to a given peer
