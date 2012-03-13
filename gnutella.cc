@@ -453,14 +453,12 @@ private:
 		}
 		delete payload;
 	}
-/*
+
 	// This function gets called when the node receives a QUERY message.
-	void handleQuery(int connection, DescriptorHeader *header,
-			in_addr address, in_port_t port) {
+	void handleQuery(DescriptorHeader *header, Peer peer) {
 		// Get the payload
 		Query_Payload *payload = (Query_Payload *)
-				readDescriptorPayload(connection, query,
-						header->get_payload_len());
+				readDescriptorPayload(peer, *header);
 
 		// The first character of the payload should be the transfer rate
 		//unsigned short transferRate = payload->get_speed();
@@ -473,12 +471,10 @@ private:
 	}
 
 	// This function gets called when the node receives a QUERYHIT message.
-	void handleQueryHit(int connection, DescriptorHeader *header,
-			in_addr address, in_port_t port) {
+	void handleQueryHit(DescriptorHeader *header, Peer peer) {
 		// Get the payload
 		QueryHit_Payload *payload = (QueryHit_Payload *)
-				readDescriptorPayload(connection, queryHit,
-						header->get_payload_len());
+				readDescriptorPayload(peer, *header);
 
 		// Do things with the QUERYHIT
 
@@ -486,17 +482,15 @@ private:
 	}
 
 	// This function gets called when the node receives a PUSH message.
-	void handlePush(int connection, DescriptorHeader *header,
-			in_addr address, in_port_t port) {
+	void handlePush(DescriptorHeader *header, Peer peer) {
 		// Get the payload
 		Push_Payload *payload = (Push_Payload *)
-				readDescriptorPayload(connection, push,
-						header->get_payload_len());
+				readDescriptorPayload(peer, *header);
 
 		// Do things with the PUSH
 
 		delete payload;
-	}*/
+	}
 
 	/**
 	 * This function will try to connect to a peer using the gnutella protocol.
