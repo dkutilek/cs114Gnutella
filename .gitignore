@@ -1,0 +1,7 @@
+# Ignore object files
+*.o
+# Ignore .project files
+.project
+.cproject
+# Ignore log directory
+logs/*

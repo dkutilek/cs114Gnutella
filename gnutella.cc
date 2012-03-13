@@ -23,6 +23,7 @@
 #include <poll.h>
 #include "util.h"
 #include <sys/select.h>
+#include <fcntl.h>
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
@@ -229,7 +230,7 @@ private:
 		
 		while (remaining > 0) {
 			int bytesRead = recv(peer.get_socket(), &buffer[used], remaining,
-					0);
+					MSG_DONTWAIT);
 
 			if (bytesRead < 0)
 				return NULL;
@@ -290,7 +291,7 @@ private:
 			break;
 		}
 
-		delete buffer;
+		delete[] buffer;
 
 		return payload;
 	}
@@ -507,6 +508,11 @@ private:
 	  		// Get the response
 	  		DescriptorHeader *response;
 	  		response = readDescriptorHeader(peer);
+
+	  		// If it returned null, try again
+	  		while (response == NULL) {
+	  			response = readDescriptorHeader(peer);
+	  		}
 
 	  		// If it's the correct response, try to add to our list of peers
 	  		if (response != NULL && response->get_header_type() == resp) {
@@ -795,12 +801,57 @@ public:
   			}
   			else {
   				// Check if any peers sent data on their connections
+  				pollfd *pfds;
+  				pfds = new pollfd[m_peers.size()];
+  				int i = 0;
+
+  				for (set<Peer>::iterator iter = m_peers.begin();
+  						iter != m_peers.end(); ++iter)
+  				{
+  					pfds[i].fd = iter->get_socket();
+  					pfds[i].events = POLLIN;
+  					i++;
+  				}
+
+  				int rv = poll(pfds, m_peers.size(), timeout * 100);
+  				i = 0;
+
+  				if (rv > 0) {
+  					for (set<Peer>::iterator iter = m_peers.begin();
+  							iter != m_peers.end(); ++iter)
+  					{
+  						if (pfds[i].fd == iter->get_socket() &&
+  								(pfds[i].revents & POLLIN))
+  						{
+  							// If the remote end closed the connection, close
+  							// this end's socket and delete the peer.
+  							if (connectionClosed(*iter)) {
+  								ostringstream oss;
+  								oss << "Peer " << ntohs(iter->get_port()) <<
+  										" closed the connection.";
+  								log(oss.str());
+
+  								close(iter->get_socket());
+  								m_peers.erase(iter);
+  							}
+  							else {
+  								handleRequest(*iter);
+  							}
+
+  							i++;
+  						}
+  					}
+  				}
+
+  				delete[] pfds;
+
+  				/*
   				fd_set fds;
   				FD_ZERO(&fds);
   				int n = 0;
 
   				for (set<Peer>::iterator iter = m_peers.begin();
-  						iter != m_peers.end(); iter++)
+  						iter != m_peers.end(); ++iter)
   				{
   					FD_SET(iter->get_socket(), &fds);
 
@@ -837,6 +888,7 @@ public:
   						}
   					}
   				}
+  				*/
   			}
   		}
   	}
