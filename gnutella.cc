@@ -28,11 +28,12 @@
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
 #define MAX_PEERS 7
+#define MAX_PING_STORAGE 14
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
-#define DEFAULT_TTL 7
-#define DEFAULT_HOPS 7
+#define DEFAULT_TTL 2
+#define DEFAULT_HOPS 0
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
@@ -228,12 +229,29 @@ private:
 		int used = 0;
 		int remaining = HEADER_SIZE;
 		
+		time_t starttime = 0;
+
 		while (remaining > 0) {
+			// Timeout on the recv if EAGAIN or EWOULBLOCK has been
+			// seen from running recv with MSG_DONTWAIT
+			if (starttime != 0 &&
+				difftime(time(NULL), starttime) > CONNECT_TIMEOUT)
+				return NULL;
+
 			int bytesRead = recv(peer.get_socket(), &buffer[used], remaining,
 					MSG_DONTWAIT);
 
-			if (bytesRead < 0)
-				return NULL;
+			if (bytesRead < 0) {
+				// recv set errno to EAGAIN or EWOULDBLOCK, so start the
+				// connection timeout.
+				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+					if (starttime == 0)
+						starttime = time(NULL);
+					continue;
+				}
+				else
+					return NULL;
+			}
 
 			used += bytesRead;
 			remaining -= bytesRead;
@@ -260,9 +278,34 @@ private:
 		int used = 0;
 		int remaining = payloadSize - 1;
 		
+		time_t starttime = 0;
+
 		while (remaining > 0) {
+			// Timeout on the recv if EAGAIN or EWOULBLOCK has been
+			// seen from running recv with MSG_DONTWAIT
+			if (starttime != 0
+				&& difftime(time(NULL), starttime) > CONNECT_TIMEOUT) {
+				delete buffer;
+				return NULL;
+			}
+
 			int bytesRead = recv(peer.get_socket(), &buffer[used], remaining,
-					0);
+					MSG_DONTWAIT);
+
+			if (bytesRead < 0) {
+				// recv set errno to EAGAIN or EWOULDBLOCK, so start the
+				// connection timeout.
+				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+					if (starttime == 0)
+						starttime = time(NULL);
+					continue;
+				}
+				else {
+					delete buffer;
+					return NULL;
+				}
+			}
+
 			used += bytesRead;
 			remaining -= bytesRead;
 			buffer[used] = '\0';
@@ -355,6 +398,9 @@ private:
 					map<MessageId,Peer>::iterator y =
 							x->second.find(header->get_message_id());
 					if (y == x->second.end()) {
+						// Clear out old PINGs
+						while(x->second.size() >= MAX_PING_STORAGE)
+							x->second.erase(x->second.begin());
 						x->second.insert(pair<MessageId,Peer>
 								(header->get_message_id(),peer));
 						// Forward the PING
@@ -571,7 +617,8 @@ private:
 		time_t starttime = time(NULL);
 		while ((status = connect(peer.get_socket(), (sockaddr *) &nodeInfo,
 				sizeof(nodeInfo))) == -1 &&
-				difftime(time(NULL), starttime) < CONNECT_TIMEOUT && errno == EADDRINUSE){};
+				difftime(time(NULL), starttime) < CONNECT_TIMEOUT
+				&& errno == EADDRINUSE){};
 		if (status == -1) {
 			ostringstream oss;
 			oss << "Could not connect to peer at " << ntohs(peer.get_port());
@@ -669,7 +716,8 @@ public:
 		int sock = acquireListenSocket(port);
 
 		// Store this node's information
-		m_self = Peer(inet_addr("127.0.0.1"), htons(port), sock, (unsigned long) m_fileList.size(), m_kilobyteCount);
+		m_self = Peer(inet_addr("127.0.0.1"), htons(port), sock,
+				(unsigned long) m_fileList.size(), m_kilobyteCount);
 		m_self.set_socket(sock);
   	}
 
@@ -931,6 +979,9 @@ public:
 			map<MessageId,Peer>::iterator y =
 					x->second.find(header.get_message_id());
 			if (y == x->second.end()) {
+				// Clear out old PINGs
+				while(x->second.size() >= MAX_PING_STORAGE)
+					x->second.erase(x->second.begin());
 				x->second.insert(pair<MessageId,Peer>
 						(header.get_message_id(), m_self));
 			}

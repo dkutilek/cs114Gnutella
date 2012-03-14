@@ -73,11 +73,17 @@ Peer& Peer::operator =(const Peer &rhs) {
 MessageId::MessageId(Peer& peer, unsigned long * messageCount) {
 	(*messageCount)++;
 	memset(m_id, 0, MESSAGEID_LEN);
+	time_t cur = time(NULL);
 	in_addr_t addr = peer.get_addr();
 	in_port_t port = peer.get_port();
-	memcpy(m_id, &addr, 4);
-	memcpy(m_id+4, &port, 2);
-	memcpy(m_id+6, messageCount, sizeof(unsigned long));
+	size_t len = 0;
+	memcpy(m_id+len, &cur, sizeof(time_t));
+	len += sizeof(time_t);
+	memcpy(m_id+len, &addr, sizeof(in_addr_t));
+	len += sizeof(in_addr_t);
+	memcpy(m_id+len, &port, sizeof(in_port_t));
+	len += sizeof(in_port_t);
+	memcpy(m_id+len, messageCount, sizeof(unsigned long));
 }
 
 MessageId::MessageId(const char * buf) {
