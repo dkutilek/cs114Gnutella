@@ -32,11 +32,12 @@
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
-#define DEFAULT_TTL 2
+#define DEFAULT_TTL 4
 #define DEFAULT_HOPS 0
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
+#define PERIODIC_PING 20
 
 using namespace std;
 
@@ -438,6 +439,9 @@ private:
 		Pong_Payload *payload = (Pong_Payload *) 
 				readDescriptorPayload(peer, *header);
 
+		if (payload == NULL)
+			return;
+
 		// Check if we need to pass this PONG along
 		map<Peer,map<MessageId,Peer> >::iterator x = m_sentPingMap.find(peer);
 		
@@ -507,6 +511,9 @@ private:
 		Query_Payload *payload = (Query_Payload *)
 				readDescriptorPayload(peer, *header);
 
+		if (payload == NULL)
+			return;
+
 		// The first character of the payload should be the transfer rate
 		//unsigned short transferRate = payload->get_speed();
 
@@ -523,6 +530,9 @@ private:
 		QueryHit_Payload *payload = (QueryHit_Payload *)
 				readDescriptorPayload(peer, *header);
 
+		if (payload == NULL)
+			return;
+
 		// Do things with the QUERYHIT
 
 		delete payload;
@@ -533,6 +543,9 @@ private:
 		// Get the payload
 		Push_Payload *payload = (Push_Payload *)
 				readDescriptorPayload(peer, *header);
+
+		if (payload == NULL)
+			return;
 
 		// Do things with the PUSH
 
@@ -548,7 +561,7 @@ private:
 	  	// Try to connect through TCP to peer.
 	  	if (connectToPeer(peer)) {
 	  		// Send a connect message
-	  		DescriptorHeader request(con);
+	  		DescriptorHeader request(m_self.get_port(), m_self.get_addr());
 	  		sendToPeer(peer, &request, NULL);
 
 	  		// Get the response
@@ -819,9 +832,14 @@ public:
   				if (message != NULL && message->get_header_type() == con) {
   					ostringstream connect_oss;
   					connect_oss << "Received CONNECT from peer at " <<
-							ntohs(remoteInfo.sin_port) << ". ";
+							ntohs(message->get_port()) << ". ";
   					log(connect_oss.str());
 					
+  					// Place listening addr and port from header into
+  					// new peer object
+  					peer.set_port(message->get_port());
+  					peer.set_addr(message->get_addr());
+
   					// Check if we can add the peer
   					set<Peer>::iterator setIter = m_peers.find(peer);
 
@@ -953,6 +971,11 @@ public:
   		gnutellaConnect(peer);
   	}
 
+  	void periodicPing() {
+  		for (set<Peer>::iterator p = m_peers.begin(); p != m_peers.end(); p++)
+  			sendPing(*p);
+  	}
+
 	// Send a PING to a given peer
 	void sendPing(Peer peer) {
 		MessageId id = generateMessageId();
@@ -1068,10 +1091,10 @@ PING.\nFor all peers input \"all\"\n";
 				cin >> str;
 				int timeout = atoi(str.c_str());
 				if (timeout == 0) {
-					//acceptConnections(5);
+					acceptConnections(5);
 				}
 				else {
-					//acceptConnections(timeout);
+					acceptConnections(timeout);
 				}
 			}
 			else if (str == "8")
@@ -1103,7 +1126,10 @@ int main(int argc, char **argv) {
 	  return 0;
   }
 
-  node->acceptConnections();
+//  while (true) {
+//	  node->periodicPing();
+	  node->acceptConnections(PERIODIC_PING);
+//	}
   delete node;
 
   return 0;

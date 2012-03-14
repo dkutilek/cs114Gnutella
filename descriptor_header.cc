@@ -19,8 +19,11 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 		m_type = resp;
 		return;
 	}
-	if (strcmp(m_header, "GNUTELLA CONNECT/0.4\n\n") == 0) {
+	if (m_header[16] == (char) 0x10) {
 		m_type = con;
+		memcpy(&m_port, m_header, 2);
+		memcpy(&m_addr, m_header+2, 4);
+		//TODO compare version #
 		return;
 	}
 
@@ -68,11 +71,11 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 
 DescriptorHeader::DescriptorHeader(header_type type)
 {
-	if (type == con) {
+	/*if (type == con) {
 		m_type = con;
 		strcpy(m_header, "GNUTELLA CONNECT/0.4\n\n");
 		return;
-	}
+	}*/
 	if (type == resp) {
 		m_type = resp;
 		strcpy(m_header, "GNUTELLA OK\n\n");
@@ -129,6 +132,22 @@ DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 	m_payload_len = payload_len;	
 }
 
+DescriptorHeader::DescriptorHeader(in_port_t port, in_addr_t addr) {
+	memset(m_header, 0, HEADER_SIZE);
+
+	// Type
+	m_type = con;
+	m_header[16] = 16;
+	// Listening Port
+	memcpy(m_header, &port, 2);
+	m_port = port;
+	// Listening Addr
+	memcpy(m_header+2, &addr, 4);
+	m_addr = addr;
+	// Version
+	strcpy(m_header+6, "0.4");
+}
+
 DescriptorHeader::~DescriptorHeader() {
 
 }
@@ -155,4 +174,18 @@ unsigned short DescriptorHeader::get_hops() {
 
 unsigned long DescriptorHeader::get_payload_len() {
 	return m_payload_len;
-}	
+}
+
+in_port_t DescriptorHeader::get_port() {
+	if (m_type == con)
+		return m_port;
+	else
+		return 0;
+}
+
+in_addr_t DescriptorHeader::get_addr() {
+	if (m_type == con)
+		return m_addr;
+	else
+		return 0;
+}

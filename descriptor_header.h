@@ -21,12 +21,15 @@ private:
 	unsigned short m_time_to_live;
 	unsigned short m_hops;
 	header_type m_type;
+	in_port_t m_port;
+	in_addr_t m_addr;
 public:
 	DescriptorHeader(const char *header);
 	DescriptorHeader(header_type type);
 	DescriptorHeader(MessageId &messageID, header_type type,
 			unsigned short time_to_live, unsigned short hops,
 			unsigned long payload_len);
+	DescriptorHeader(in_port_t port, in_addr_t addr);
 	~DescriptorHeader();
 	const char *get_header();
 	MessageId& get_message_id();
@@ -34,6 +37,8 @@ public:
 	unsigned short get_time_to_live();
 	unsigned short get_hops();
 	unsigned long get_payload_len();
+	in_port_t get_port();
+	in_addr_t get_addr();
 };
 
 #endif /* DESCRIPTOR_HEADER_H_ */
