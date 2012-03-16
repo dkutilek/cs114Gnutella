@@ -24,6 +24,7 @@
 #include "util.h"
 #include <sys/select.h>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
@@ -196,7 +197,7 @@ private:
 
 		if (timeout != 0) {
 			pollfd pfd;
-			pfd.fd = m_self.get_socket();
+			pfd.fd = m_self.get_recv();
 			pfd.events = POLLIN;
 
 			int retval = poll(&pfd, 1, timeout*100);
@@ -209,12 +210,12 @@ private:
 				return -1;
 			}
 			else {
-			 	return accept(m_self.get_socket(), (sockaddr *) remoteInfo,
+			 	return accept(m_self.get_recv(), (sockaddr *) remoteInfo,
 			 			&addrLength);
 			}
 		}
 		else {
-			return accept(m_self.get_socket(), (sockaddr *) remoteInfo,
+			return accept(m_self.get_recv(), (sockaddr *) remoteInfo,
 					&addrLength);
 		}
 	}
@@ -225,48 +226,27 @@ private:
 	 * you are done with it.
 	 */
 	DescriptorHeader *readDescriptorHeader(Peer peer) {
-		char buffer[HEADER_SIZE];
+		char buffer[HEADER_SIZE+1];
 		memset(buffer, 0, HEADER_SIZE);
 		int used = 0;
 		int remaining = HEADER_SIZE;
-		
-		time_t starttime = 0;
 
 		while (remaining > 0) {
-			// Timeout on the recv if EAGAIN or EWOULBLOCK has been
-			// seen from running recv with MSG_DONTWAIT
-			if (starttime != 0 &&
-				difftime(time(NULL), starttime) > CONNECT_TIMEOUT) {
+
+			int bytesRead = recv(peer.get_recv(), &buffer[used], remaining, 0);
+
+			if (bytesRead < 0) {
 				ostringstream oss;
-				oss << "Timed out while receiving from peer at "
+				oss << "Error while receiving from peer at "
 						<< ntohs(peer.get_port());
 				error(oss.str());
 				return NULL;
 			}
 
-			int bytesRead = recv(peer.get_socket(), &buffer[used], remaining,
-					MSG_DONTWAIT);
-
-			if (bytesRead < 0) {
-				// recv set errno to EAGAIN or EWOULDBLOCK, so start the
-				// connection timeout.
-				if (errno == EAGAIN || errno == EWOULDBLOCK) {
-					if (starttime == 0)
-						starttime = time(NULL);
-					continue;
-				}
-				else {
-					ostringstream oss;
-					oss << "Error while receiving from peer at "
-							<< ntohs(peer.get_port());
-					error(oss.str());
-					return NULL;
-				}
-			}
-
 			used += bytesRead;
 			remaining -= bytesRead;
 		}
+		buffer[HEADER_SIZE+1] = 0;
 		
 		return new DescriptorHeader(buffer);
 	}
@@ -284,47 +264,35 @@ private:
 			return NULL;
 		}
 		
-		char *buffer = new char[payloadSize];
+		int bytesAvailable;
+		if (ioctl(peer.get_recv(), FIONREAD, &bytesAvailable) == 0) {
+			if (bytesAvailable < payloadSize) {
+				log("bytesAvailable < payloadSize");
+				return NULL;
+			}
+		}
+		else {
+			error("ioctl failed in payload");
+			return NULL;
+		}
+
+		char *buffer = new char[payloadSize+1];
 		memset(buffer, 0, payloadSize);
 		int used = 0;
-		int remaining = payloadSize - 1;
+		int remaining = payloadSize;
 		
-		time_t starttime = 0;
-
 		while (remaining > 0) {
-			// Timeout on the recv if EAGAIN or EWOULBLOCK has been
-			// seen from running recv with MSG_DONTWAIT
-			if (starttime != 0
-				&& difftime(time(NULL), starttime) > CONNECT_TIMEOUT) {
+
+			int bytesRead = recv(peer.get_recv(), &buffer[used], remaining, 0);
+
+			if (bytesRead < 0) {
 				ostringstream oss;
-				oss << "Timed out while receiving "
+				oss << "Error while receiving "
 						<< type_to_str(header.get_header_type())
-						<< " from peer at " << ntohs(peer.get_port());
+						<< " from peer at "	<< ntohs(peer.get_port());
 				error(oss.str());
 				delete buffer;
 				return NULL;
-			}
-
-			int bytesRead = recv(peer.get_socket(), &buffer[used], remaining,
-					MSG_DONTWAIT);
-
-			if (bytesRead < 0) {
-				// recv set errno to EAGAIN or EWOULDBLOCK, so start the
-				// connection timeout.
-				if (errno == EAGAIN || errno == EWOULDBLOCK) {
-					if (starttime == 0)
-						starttime = time(NULL);
-					continue;
-				}
-				else {
-					ostringstream oss;
-					oss << "Error while receiving "
-							<< type_to_str(header.get_header_type())
-							<< " from peer at "	<< ntohs(peer.get_port());
-					error(oss.str());
-					delete buffer;
-					return NULL;
-				}
 			}
 
 			used += bytesRead;
@@ -381,18 +349,6 @@ private:
 		remoteInfo->sin_addr.s_addr = address;
 		remoteInfo->sin_port = port;
 	}
-
-	/*
-
-	// This function gets called when the node receives a "GNUTELLA CONNECT"
-	// message.  It just sends a "GNUTELLA OK" response back.
-	void handleConnect(in_addr address, in_port_t port) {
-		DescriptorHeader header(resp);
-		unsigned short p = ntohs(port);
-		sendToAddrPort(address, htons(p-1), &header, NULL);
-	}
-
-	*/
 
 	// This function gets called when the node receives a PING message.
 	void handlePing(DescriptorHeader *header, Peer peer) {
@@ -456,7 +412,7 @@ private:
 	// This function gets called when the node receives a PONG message.
 	void handlePong(DescriptorHeader *header, Peer peer) {
 		// Get the payload
-		Pong_Payload *payload = (Pong_Payload *) 
+		Pong_Payload *payload = (Pong_Payload *)
 				readDescriptorPayload(peer, *header);
 
 		if (payload == NULL)
@@ -464,50 +420,26 @@ private:
 
 		// Check if we need to pass this PONG along
 		map<Peer,map<MessageId,Peer> >::iterator x = m_sentPingMap.find(peer);
-		
+
 		if (x != m_sentPingMap.end()) {
-			map<MessageId,Peer>::iterator y = 
+			map<MessageId,Peer>::iterator y =
 					x->second.find(header->get_message_id());
-					
+
 			if (y != x->second.end()) {
 				// We might be the actual target
 				if (y->second == m_self) {
-					/*Peer new_peer(payload->get_ip_addr(), payload->get_port(),
-							0,
-							payload->get_files_shared(),
-							payload->get_kilo_shared());
-
-					if (new_peer != m_self) {
-						if (m_peers.find(new_peer) != m_peers.end()) {
-							ostringstream oss;
-							oss << "Updated peer at "
-									<< ntohs(payload->get_port());
-							log(oss.str());
-							m_peers.insert(new_peer);
-						}
-						else if (m_peers.size() < MAX_PEERS){
-							ostringstream oss;
-							oss << "New peer at " << ntohs(payload->get_port())
-									<< " added";
-							log(oss.str());
-							m_peers.insert(new_peer);
-						}
-					}*/
 
 					int sock = acquireSendSocket();
 					Peer new_peer(payload->get_ip_addr(), payload->get_port(),
-							sock, payload->get_files_shared(),
+							sock, -1, payload->get_files_shared(),
 							payload->get_kilo_shared());
-					ostringstream oss;
-					oss << "Possible new peer at "
-							<< ntohs(new_peer.get_port());
-					log(oss.str());
+
 					set<Peer>::iterator iter = m_peers.find(new_peer);
 
 					// Connect to the peer if we don't already know about it
 					// and we can accept more peers.
 					if (iter == m_peers.end() && m_peers.size() < MAX_PEERS) {
-						gnutellaConnect(new_peer);
+						gnutellaConnect(&new_peer, CONNECT_TIMEOUT);
 					}
 					else {
 						close(sock);
@@ -520,9 +452,6 @@ private:
 							header->get_time_to_live()-1, header->get_hops()+1,
 							header->get_payload_len());
 					sendToPeer(y->second, &d, payload);
-
-					// Erase saved PING
-					// x->second.erase(y->first);
 				}
 			}
 		}
@@ -581,48 +510,59 @@ private:
 	 * If the remote peer responds correctly, it will be added to the list of
 	 * known peers.
 	 */
-	void gnutellaConnect(Peer peer) {
+	void gnutellaConnect(Peer * peer, int timeout = 0) {
 	  	// Try to connect through TCP to peer.
-	  	if (connectToPeer(peer)) {
-	  		// Send a connect message
-	  		DescriptorHeader request(m_self.get_port(), m_self.get_addr());
-	  		sendToPeer(peer, &request, NULL);
+	  	while (!connectToPeer(*peer)) {}
 
-	  		// Get the response
-	  		DescriptorHeader *response;
-	  		response = readDescriptorHeader(peer);
+	  	// Send a connect message
+		DescriptorHeader request(m_self.get_port(), m_self.get_addr());
+		sendToPeer(*peer, &request, NULL);
 
-	  		// If it returned null, try again
-	  		while (response == NULL) {
-	  			response = readDescriptorHeader(peer);
-	  		}
+		sockaddr_in remoteInfo;
+		int connection = getConnectionRequest(&remoteInfo, timeout);
+		if (connection == -1) {
+			error("Timed out while waiting on gnutella connect response");
+			return;
+		}
 
-	  		// If it's the correct response, try to add to our list of peers
-	  		if (response != NULL && response->get_header_type() == resp) {
-	  			log("Connected to peer.");
+		peer->set_recv(connection);
 
-	  			set<Peer>::iterator iter = m_peers.find(peer);
+		// Get the response
+		DescriptorHeader *response;
+		response = readDescriptorHeader(*peer);
 
-	  			// Make sure the peer isn't already known, and we have room
-	  			// for it
-	  			if (iter == m_peers.end() && m_peers.size() < MAX_PEERS) {
-	  				ostringstream oss;
-	  				oss << "New peer at " << ntohs(peer.get_port()) << " added";
-	  				log(oss.str());
+		// If it returned null, try again
+		while (response == NULL) {
+			response = readDescriptorHeader(*peer);
+		}
 
-	  				m_peers.insert(peer);
-	  			}
-	  			else {
-	  				close(peer.get_socket());
-	  			}
-	  		}
-	  		else {
-	  			log("Peer rejected CONNECT request.");
-	  			close(peer.get_socket());
-	  		}
+		// If it's the correct response, try to add to our list of peers
+		if (response != NULL && response->get_header_type() == resp) {
+			log("Connected to peer.");
 
-	  		delete response;
-	  	}
+			set<Peer>::iterator iter = m_peers.find(*peer);
+
+			// Make sure the peer isn't already known, and we have room
+			// for it
+			if (iter == m_peers.end() && m_peers.size() < MAX_PEERS) {
+				ostringstream oss;
+				oss << "New peer at " << ntohs(peer->get_port()) << " added";
+				log(oss.str());
+
+				m_peers.insert(*peer);
+			}
+			else {
+				close(connection);
+				close(peer->get_send());
+			}
+		}
+		else {
+			log("Peer rejected CONNECT request.");
+			close(connection);
+			close(peer->get_send());
+		}
+
+		delete response;
 	}
 
 	// Send a PONG to a given peer
@@ -652,7 +592,7 @@ private:
 		// Try to start a connection
 		int status;
 		time_t starttime = time(NULL);
-		while ((status = connect(peer.get_socket(), (sockaddr *) &nodeInfo,
+		while ((status = connect(peer.get_send(), (sockaddr *) &nodeInfo,
 				sizeof(nodeInfo))) == -1 &&
 				difftime(time(NULL), starttime) < CONNECT_TIMEOUT
 				&& errno == EADDRINUSE){};
@@ -675,9 +615,20 @@ private:
 				" request to peer at " << ntohs(peer.get_port());
 		log(oss.str());
 
-		int status = send(peer.get_socket(), header->get_header(), HEADER_SIZE, 0);
+		// Consolidate the header and payload into one buffer
+		long len = HEADER_SIZE;
+		if (payload != NULL)
+			len+= header->get_payload_len();
+		char * buff = new char[len+1];
+		memcpy(buff, header->get_header(), HEADER_SIZE);
+		if (payload != NULL)
+			memcpy(buff+HEADER_SIZE, payload->get_payload(),
+					header->get_payload_len());
+		buff[len] = 0;
 
-		if (status != HEADER_SIZE) {
+		// Send all at once
+		int status = send(peer.get_send(), buff, len, 0);
+		if (status != len) {
 			ostringstream logoss;
 			logoss << "Failed to send "
 					<< type_to_str(header->get_header_type()) <<
@@ -685,21 +636,7 @@ private:
 			error(logoss.str());
 			return;
 		}
-
-		if (payload != NULL) {
-			status = send(peer.get_socket(), payload->get_payload(),
-					payload->get_payload_len(), 0);
-
-			if (status < 0 ||
-					(unsigned int) status != payload->get_payload_len()) {
-				ostringstream logoss;
-				logoss << "Failed to send "
-						<< type_to_str(header->get_header_type())
-						<< " payload to peer at " << ntohs(peer.get_port());
-				error(logoss.str());
-				return;
-			}
-		}
+		delete [] buff;
 	}
 
 	// Send a header and a payload over an already opened connection.
@@ -753,9 +690,8 @@ public:
 		int sock = acquireListenSocket(port);
 
 		// Store this node's information
-		m_self = Peer(inet_addr("127.0.0.1"), htons(port), sock,
+		m_self = Peer(inet_addr("127.0.0.1"), htons(port), -1, sock,
 				(unsigned long) m_fileList.size(), m_kilobyteCount);
-		m_self.set_socket(sock);
   	}
 
   	~Gnutella() {
@@ -772,7 +708,7 @@ public:
   	 */
   	bool connectionClosed(Peer peer) {
   		char buffer[HEADER_SIZE];
-  		int bytesRead = recv(peer.get_socket(), buffer, HEADER_SIZE, MSG_PEEK);
+  		int bytesRead = recv(peer.get_recv(), buffer, HEADER_SIZE, MSG_PEEK);
 
   		return bytesRead == 0;
   	}
@@ -849,8 +785,8 @@ public:
 
   			// Connection accepted, check if they sent a CONNECT request
   			if (connection != -1) {
-  				Peer peer(remoteInfo.sin_addr.s_addr, remoteInfo.sin_port,
-  						connection);
+  				Peer peer(remoteInfo.sin_addr.s_addr, remoteInfo.sin_port);
+  				peer.set_recv(connection);
   				DescriptorHeader *message = readDescriptorHeader(peer);
 
   				if (message != NULL && message->get_header_type() == con) {
@@ -870,14 +806,20 @@ public:
   					if (setIter == m_peers.end() && 
 						m_peers.size() < MAX_PEERS)
 					{
-  						// Send an acknowledgement of the CONNECT request
-  						DescriptorHeader response(resp);
-  						sendToPeer(peer, &response, NULL);
+  						// Open sending connection of peer
+						int s = acquireSendSocket();
+						peer.set_send(s);
 
-  						ostringstream new_peer_oss;
-  					  	new_peer_oss << "Adding new peer.";
-  					  	log(new_peer_oss.str());
-  					  	m_peers.insert(peer);
+						if (connectToPeer(peer)) {
+							// Send an acknowledgement of the CONNECT request
+							DescriptorHeader response(resp);
+							sendToPeer(peer, &response, NULL);
+
+							ostringstream new_peer_oss;
+							new_peer_oss << "Adding new peer.";
+							log(new_peer_oss.str());
+							m_peers.insert(peer);
+						}
   					}
   					// Else the peer is already known, or max peers have been
   					// reached
@@ -898,7 +840,7 @@ public:
   				for (set<Peer>::iterator iter = m_peers.begin();
   						iter != m_peers.end(); ++iter)
   				{
-  					pfds[i].fd = iter->get_socket();
+  					pfds[i].fd = iter->get_recv();
   					pfds[i].events = POLLIN;
   					i++;
   				}
@@ -910,26 +852,32 @@ public:
   					for (set<Peer>::iterator iter = m_peers.begin();
   							iter != m_peers.end(); ++iter)
   					{
-  						if (pfds[i].fd == iter->get_socket() &&
+  						if (pfds[i].fd == iter->get_recv() &&
   								(pfds[i].revents & POLLIN))
   						{
-  							// If the remote end closed the connection, close
-  							// this end's socket and delete the peer.
-  							if (connectionClosed(*iter)) {
-  								ostringstream oss;
-  								oss << "Peer " << ntohs(iter->get_port()) <<
-  										" closed the connection.";
-  								log(oss.str());
+  							int bytesAvailable;
+  							if (ioctl(iter->get_recv(), FIONREAD,
+  									&bytesAvailable) == 0)
+  							{
+								// If the remote end closed the connection,
+  								// close this end's socket and delete the peer.
+								if (bytesAvailable == 0) {
+									ostringstream oss;
+									oss << "Peer " << ntohs(iter->get_port()) <<
+											" closed the connection.";
+									log(oss.str());
 
-  								close(iter->get_socket());
-  								m_peers.erase(iter);
+									close(iter->get_recv());
+									close(iter->get_send());
+									m_peers.erase(iter);
+								}
+								else if (bytesAvailable >= HEADER_SIZE) {
+									handleRequest(*iter);
+								}
   							}
-  							else {
-  								/*ostringstream oss;
-  								oss << "Handling request from peer at "
-  										<< htons(iter->get_port());
-  								log(oss.str());*/
-  								handleRequest(*iter);
+  							else
+  							{
+  								error("ioctl failed in accept connections");
   							}
   						}
   						i++;
@@ -993,9 +941,9 @@ public:
 	// is an actual gnutella node.
   	void bootstrap(const char *address, int port) {
   		int s = acquireSendSocket();
-  		Peer peer(inet_addr(address), htons(port), s);
+  		Peer peer(inet_addr(address), htons(port), s, -1);
 
-  		gnutellaConnect(peer);
+  		gnutellaConnect(&peer);
   	}
 
   	/**
@@ -1161,7 +1109,6 @@ int main(int argc, char **argv) {
 	  node->periodicPing();
 	  node->acceptConnections(PERIODIC_PING);
   }
-  //node->acceptConnections();
 
   delete node;
 

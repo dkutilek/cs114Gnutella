@@ -3,6 +3,7 @@
 # Ignore .project files
 .project
 .cproject
+.settings
 # Ignore log directory
 logs/*
 # Ignore built executable
