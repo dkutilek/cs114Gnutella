@@ -971,6 +971,10 @@ public:
   		gnutellaConnect(peer);
   	}
 
+  	/**
+  	 * Send a PING message to all known peers.  This function should be
+  	 * called in the main listening loop, after connections have been accepted.
+  	 */
   	void periodicPing() {
   		for (set<Peer>::iterator p = m_peers.begin(); p != m_peers.end(); p++)
   			sendPing(*p);
@@ -1126,10 +1130,11 @@ int main(int argc, char **argv) {
 	  return 0;
   }
 
-//  while (true) {
-//	  node->periodicPing();
+  while (true) {
+	  node->periodicPing();
 	  node->acceptConnections(PERIODIC_PING);
-//	}
+  }
+
   delete node;
 
   return 0;

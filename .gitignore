@@ -5,3 +5,5 @@
 .cproject
 # Ignore log directory
 logs/*
+# Ignore built executable
+gnutella

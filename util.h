@@ -10,6 +10,7 @@
 
 #include <string>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 using namespace std;
 
 #define MESSAGEID_LEN 16
