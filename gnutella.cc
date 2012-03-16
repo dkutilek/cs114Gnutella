@@ -28,7 +28,7 @@
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
 #define MAX_PEERS 7
-#define MAX_PING_STORAGE 14
+#define MAX_PING_STORAGE 32
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
@@ -236,8 +236,13 @@ private:
 			// Timeout on the recv if EAGAIN or EWOULBLOCK has been
 			// seen from running recv with MSG_DONTWAIT
 			if (starttime != 0 &&
-				difftime(time(NULL), starttime) > CONNECT_TIMEOUT)
+				difftime(time(NULL), starttime) > CONNECT_TIMEOUT) {
+				ostringstream oss;
+				oss << "Timed out while receiving from peer at "
+						<< ntohs(peer.get_port());
+				error(oss.str());
 				return NULL;
+			}
 
 			int bytesRead = recv(peer.get_socket(), &buffer[used], remaining,
 					MSG_DONTWAIT);
@@ -250,8 +255,13 @@ private:
 						starttime = time(NULL);
 					continue;
 				}
-				else
+				else {
+					ostringstream oss;
+					oss << "Error while receiving from peer at "
+							<< ntohs(peer.get_port());
+					error(oss.str());
 					return NULL;
+				}
 			}
 
 			used += bytesRead;
@@ -286,6 +296,11 @@ private:
 			// seen from running recv with MSG_DONTWAIT
 			if (starttime != 0
 				&& difftime(time(NULL), starttime) > CONNECT_TIMEOUT) {
+				ostringstream oss;
+				oss << "Timed out while receiving "
+						<< type_to_str(header.get_header_type())
+						<< " from peer at " << ntohs(peer.get_port());
+				error(oss.str());
 				delete buffer;
 				return NULL;
 			}
@@ -302,6 +317,11 @@ private:
 					continue;
 				}
 				else {
+					ostringstream oss;
+					oss << "Error while receiving "
+							<< type_to_str(header.get_header_type())
+							<< " from peer at "	<< ntohs(peer.get_port());
+					error(oss.str());
 					delete buffer;
 					return NULL;
 				}
@@ -478,6 +498,10 @@ private:
 					Peer new_peer(payload->get_ip_addr(), payload->get_port(),
 							sock, payload->get_files_shared(),
 							payload->get_kilo_shared());
+					ostringstream oss;
+					oss << "Possible new peer at "
+							<< ntohs(new_peer.get_port());
+					log(oss.str());
 					set<Peer>::iterator iter = m_peers.find(new_peer);
 
 					// Connect to the peer if we don't already know about it
@@ -901,11 +925,14 @@ public:
   								m_peers.erase(iter);
   							}
   							else {
+  								/*ostringstream oss;
+  								oss << "Handling request from peer at "
+  										<< htons(iter->get_port());
+  								log(oss.str());*/
   								handleRequest(*iter);
   							}
-
-  							i++;
   						}
+  						i++;
   					}
   				}
 
@@ -1134,6 +1161,7 @@ int main(int argc, char **argv) {
 	  node->periodicPing();
 	  node->acceptConnections(PERIODIC_PING);
   }
+  //node->acceptConnections();
 
   delete node;
 
