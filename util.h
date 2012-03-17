@@ -11,6 +11,7 @@
 #include <string>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <openssl/md5.h>
 using namespace std;
 
 #define MESSAGEID_LEN 16
@@ -46,6 +47,8 @@ public:
 	int get_socket() const {return m_socket;}
 	unsigned long get_numSharedFiles() const {return m_numSharedFiles;}
 	unsigned long get_numSharedKilobytes() const {return m_numSharedKilobytes;}
+
+	string getServentID();
 };
 
 // The message id in the descriptor header, generated using the ip address,
@@ -84,5 +87,38 @@ void little_to_big_endian(char * dest, unsigned long value,
 		unsigned long len);
 void little_to_big_endian(char * dest, unsigned short value,
 		unsigned long len);
+
+/**
+ * This class holds information describing a file that the host is sharing.
+ */
+class SharedFile {
+private:
+	string m_filePath;		// The path of this file relative to the working directory
+	unsigned int m_bytes;
+	unsigned int m_index;	// An identifier for this file
+public:
+	SharedFile(string filePath, unsigned int bytes) {
+		m_filePath = filePath;
+		m_bytes = bytes;
+	}
+
+	void setFilePath(string path) { m_filePath = path; }
+	void setBytes(unsigned int bytes) { m_bytes = bytes; }
+	void setFileIndex(unsigned int index) { m_index = index; }
+
+	unsigned int getFileIndex() { return m_index; }
+	string getFilePath() { return m_filePath; }
+	unsigned int getBytes() { return m_bytes; }
+	string getFileName() {
+		int pos = m_filePath.find_last_of('/');
+
+		if (pos != -1) {
+			return m_filePath.substr(pos);
+		}
+		else {
+			return m_filePath;
+		}
+	}
+};
 
 #endif /* UTIL_H_ */

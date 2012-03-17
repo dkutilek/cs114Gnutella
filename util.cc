@@ -70,6 +70,18 @@ Peer& Peer::operator =(const Peer &rhs) {
 	return *this;
 }
 
+string Peer::getServentID() {
+	char addr[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &m_addr, addr, INET_ADDRSTRLEN);
+	string address(addr);
+	string port((const char *)ntohs(m_port));
+	string addressAndPort = address + ":" + port;
+
+	unsigned char digest[17];
+	MD5((unsigned char *)addressAndPort.c_str(), addressAndPort.length(), digest);
+	return string((const char *) digest);
+}
+
 MessageId::MessageId(Peer& peer, unsigned long * messageCount) {
 	(*messageCount)++;
 	memset(m_id, 0, MESSAGEID_LEN);

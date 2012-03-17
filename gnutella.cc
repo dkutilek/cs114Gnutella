@@ -49,7 +49,8 @@ private:
 	unsigned char m_maximumUploadRate;		// in KB/s
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
-	vector<string> m_fileList;
+	//vector<string> m_fileList;
+	vector<SharedFile> m_fileList;
 	unsigned long m_kilobyteCount;
 	unsigned long m_messageCount;
 	bool m_userNode;
@@ -92,7 +93,7 @@ private:
 			}
 
 			string filename(entry->d_name);
-			m_fileList.push_back(filename);
+			string path = m_sharedDirectoryName + filename;
 
 			struct stat buf;
 			if (stat(filename.c_str(), & buf) == -1) {
@@ -101,7 +102,9 @@ private:
 				error(oss.str());
 			}
 			else {
-				m_kilobyteCount += buf.st_size;
+				m_kilobyteCount += buf.st_size / 1000;
+				SharedFile file(path, buf.st_size);
+				m_fileList.push_back(file);
 			}
 		}
 		
@@ -515,11 +518,40 @@ private:
 			return;
 
 		// The first character of the payload should be the transfer rate
-		//unsigned short transferRate = payload->get_speed();
+		unsigned short transferRate = payload->get_speed();
 
-		// The rest of the payload is a string that determines the file that
-		// the sender is looking for
-		//string searchCriteria = payload->get_search();
+		// Check if our upload rate matches the minimum transfer rate requested
+		if (transferRate <= m_maximumUploadRate) {
+			// The rest of the payload is a string that determines the file
+			// that the sender is looking for.
+			string searchCriteria = payload->get_search();
+			vector<Result> m_searchHits;
+
+			// Check if this node has a file that matches the search criteria
+			for (vector<SharedFile>::iterator file = m_fileList.begin();
+					file != m_fileList.end(); file++)
+			{
+				if (file->getFileName() == searchCriteria) {
+					Result result(file->getFileIndex(), file->getBytes(),
+							file->getFileName());
+					m_searchHits.push_back(result);
+				}
+			}
+
+			// If we have any hits, construct a new payload
+			if (m_searchHits.size() > 0) {
+				QueryHit_Payload *response_payload =
+						new QueryHit_Payload(m_self.get_port(),
+								m_self.get_addr(),
+								m_maximumUploadRate,
+								m_searchHits,
+								m_self.getServentID().c_str());
+
+				delete response_payload;
+			}
+
+
+		}
 
 		delete payload;
 	}
