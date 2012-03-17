@@ -50,7 +50,6 @@ private:
 	unsigned char m_maximumUploadRate;		// in KB/s
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
-	//vector<string> m_fileList;
 	vector<SharedFile> m_fileList;
 	unsigned long m_kilobyteCount;
 	unsigned long m_messageCount;
@@ -94,17 +93,22 @@ private:
 			}
 
 			string filename(entry->d_name);
-			string path = m_sharedDirectoryName + filename;
+
+			if (filename == "." || filename == "..") {
+				continue;
+			}
+
+			string path = m_sharedDirectoryName + "/" + filename;
 
 			struct stat buf;
-			if (stat(filename.c_str(), & buf) == -1) {
+			if (stat(path.c_str(), & buf) == -1) {
 				ostringstream oss;
 				oss << "Failed to get file size of " << filename;
 				error(oss.str());
 			}
 			else {
 				m_kilobyteCount += buf.st_size / 1000;
-				SharedFile file(path, buf.st_size);
+				SharedFile file(filename, buf.st_size);
 				m_fileList.push_back(file);
 			}
 		}
@@ -499,19 +503,29 @@ private:
 				}
 			}
 
-			// If we have any hits, construct a new payload
+			// If we have any hits, construct a QUERYHIT message
 			if (m_searchHits.size() > 0) {
-				QueryHit_Payload *response_payload =
+				string serventId = m_self.getServentID();
+
+				QueryHit_Payload *responsePayload =
 						new QueryHit_Payload(m_self.get_port(),
 								m_self.get_addr(),
 								m_maximumUploadRate,
 								m_searchHits,
-								m_self.getServentID().c_str());
+								serventId.c_str());
 
-				delete response_payload;
+				MessageId id = generateMessageId();
+
+				DescriptorHeader *responseHeader =
+						new DescriptorHeader(id, queryHit, DEFAULT_TTL,
+								DEFAULT_HOPS,
+								responsePayload->get_payload_len());
+
+				sendToPeer(peer, responseHeader, responsePayload);
+
+				delete responseHeader;
+				delete responsePayload;
 			}
-
-
 		}
 
 		delete payload;
@@ -788,7 +802,7 @@ public:
 		case query:
 			oss << "Received QUERY from peer at " << ntohs(peer.get_port());
 			log(oss.str());
-			//handleQuery(connection, header,remoteInfo.sin_addr, remoteInfo.sin_port);
+			handleQuery(header, peer);
 			break;
 		case queryHit:
 			oss << "Received QUERYHIT from peer at " << ntohs(peer.get_port());

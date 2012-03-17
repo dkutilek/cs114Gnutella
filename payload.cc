@@ -182,17 +182,18 @@ QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 {
 	// Number of Hits
 	m_num_hits = result_set.size();
-	little_to_big_endian(m_payload, m_num_hits, 1);
 
 	m_payload_len = 11;
 	
-	for (unsigned short i; i < m_num_hits; i ++) {
+	for (unsigned short i = 0; i < m_num_hits; i++) {
 		Result r = result_set.at(i);
 		m_payload_len += r.get_payload_len();
 	}
 	
 	m_payload_len += 16;
 	m_payload = (char *) malloc (m_payload_len);
+
+	little_to_big_endian(m_payload, m_num_hits, 1);
 
 	// Port
 	memcpy(m_payload+1, &port, 2);

@@ -96,32 +96,22 @@ void little_to_big_endian(char * dest, unsigned short value,
  */
 class SharedFile {
 private:
-	string m_filePath;		// The path of this file relative to the working directory
+	string m_filename;
 	unsigned int m_bytes;
 	unsigned int m_index;	// An identifier for this file
 public:
-	SharedFile(string filePath, unsigned int bytes) {
-		m_filePath = filePath;
+	SharedFile(string filename, unsigned int bytes) {
+		m_filename = filename;
 		m_bytes = bytes;
 	}
 
-	void setFilePath(string path) { m_filePath = path; }
+	void setFilePath(string filename) { m_filename = filename; }
 	void setBytes(unsigned int bytes) { m_bytes = bytes; }
 	void setFileIndex(unsigned int index) { m_index = index; }
 
 	unsigned int getFileIndex() { return m_index; }
-	string getFilePath() { return m_filePath; }
+	string getFileName() { return m_filename; }
 	unsigned int getBytes() { return m_bytes; }
-	string getFileName() {
-		int pos = m_filePath.find_last_of('/');
-
-		if (pos != -1) {
-			return m_filePath.substr(pos);
-		}
-		else {
-			return m_filePath;
-		}
-	}
 };
 
 #endif /* UTIL_H_ */
