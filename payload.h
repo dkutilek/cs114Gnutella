@@ -22,6 +22,7 @@ protected:
 	char *m_payload;
 	unsigned long m_payload_len;
 public:
+	Payload();
 	virtual ~Payload();
 	const char *get_payload();
 	unsigned long get_payload_len();
@@ -63,6 +64,7 @@ public:
 	Result(unsigned long file_index, unsigned long file_size,
 			string m_file_name);
 	Result(const char *result, unsigned long length);
+
 	unsigned long const get_file_index();
 	unsigned long const get_file_size();
 	string const get_file_name();

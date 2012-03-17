@@ -13,8 +13,14 @@
 
 /* Payload methods */
 
+Payload::Payload() {
+	m_payload = NULL;
+}
+
 Payload::~Payload() {
-	free(m_payload);
+	if (m_payload == NULL) {
+		free(m_payload);
+	}
 }
 
 const char *Payload::get_payload() {
