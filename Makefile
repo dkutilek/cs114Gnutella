@@ -1,4 +1,4 @@
-CXXFLAGS =	 -g -Wall -fmessage-length=0
+CXXFLAGS =	 -g -Wall -fmessage-length=0 -fno-stack-protector
 
 OBJS =		gnutella.o descriptor_header.o payload.o util.o
 
