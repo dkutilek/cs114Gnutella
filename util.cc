@@ -11,19 +11,30 @@
 #include "util.h"
 using namespace std;
 
-Peer::Peer(in_addr_t addr, in_port_t port, int socket, unsigned long numSharedFiles,
-		unsigned long numSharedKilobytes) {
+Peer::Peer(in_addr_t addr, in_port_t port, int send, int recv,
+		unsigned long numSharedFiles, unsigned long numSharedKilobytes) {
 	m_addr = addr;
 	m_port = port;
-	m_socket = socket;
+	m_send = send;
+	m_recv = recv;
 	m_numSharedFiles = numSharedFiles;
 	m_numSharedKilobytes = numSharedKilobytes;
 }
 
-Peer::Peer(in_addr_t addr, in_port_t port, int socket) {
+Peer::Peer(in_addr_t addr, in_port_t port, int send, int recv) {
 	m_addr = addr;
 	m_port = port;
-	m_socket = socket;
+	m_send = send;
+	m_recv = recv;
+	m_numSharedFiles = 0;
+	m_numSharedKilobytes = 0;
+}
+
+Peer::Peer(in_addr_t addr, in_port_t port) {
+	m_addr = addr;
+	m_port = port;
+	m_send = -1;
+	m_recv = -1;
 	m_numSharedFiles = 0;
 	m_numSharedKilobytes = 0;
 }
@@ -31,7 +42,8 @@ Peer::Peer(in_addr_t addr, in_port_t port, int socket) {
 Peer::Peer() {
 	m_addr = 0;
 	m_port = 0;
-	m_socket = 0;
+	m_send = -1;
+	m_recv = -1;
 	m_numSharedFiles = 0;
 	m_numSharedKilobytes = 0;
 }
@@ -65,6 +77,8 @@ bool Peer::operator >(const Peer &rhs) const {
 Peer& Peer::operator =(const Peer &rhs) {
 	this->m_addr = rhs.m_addr;
 	this->m_port = rhs.m_port;
+	this->m_send = rhs.m_send;
+	this->m_recv = rhs.m_recv;
 	this->m_numSharedFiles = rhs.m_numSharedFiles;
 	this->m_numSharedKilobytes = rhs.m_numSharedKilobytes;
 	return *this;
