@@ -273,6 +273,14 @@ private:
 		}
 		else {
 			error("ioctl failed in payload");
+			ostringstream oss;
+			oss << "Peer " << ntohs(peer.get_port()) <<
+					" closed the connection.";
+			log(oss.str());
+
+			close(peer.get_recv());
+			close(peer.get_send());
+			m_peers.erase(peer);
 			return NULL;
 		}
 
@@ -785,51 +793,63 @@ public:
 
   			// Connection accepted, check if they sent a CONNECT request
   			if (connection != -1) {
-  				Peer peer(remoteInfo.sin_addr.s_addr, remoteInfo.sin_port);
-  				peer.set_recv(connection);
-  				DescriptorHeader *message = readDescriptorHeader(peer);
+  				// Check to make sure we won't block on the connection
+  				int bytesAvailable;
+  				if (ioctl(connection, FIONREAD, &bytesAvailable) == 0) {
+  					if (bytesAvailable == HEADER_SIZE) {
+  		  				Peer peer(remoteInfo.sin_addr.s_addr,
+  		  						remoteInfo.sin_port);
+  		  				peer.set_recv(connection);
+  		  				DescriptorHeader *message = readDescriptorHeader(peer);
 
-  				if (message != NULL && message->get_header_type() == con) {
-  					ostringstream connect_oss;
-  					connect_oss << "Received CONNECT from peer at " <<
-							ntohs(message->get_port()) << ". ";
-  					log(connect_oss.str());
-					
-  					// Place listening addr and port from header into
-  					// new peer object
-  					peer.set_port(message->get_port());
-  					peer.set_addr(message->get_addr());
+  		  				if (message != NULL &&
+  		  						message->get_header_type() == con) {
+  		  					ostringstream connect_oss;
+  		  					connect_oss << "Received CONNECT from peer at " <<
+  									ntohs(message->get_port()) << ". ";
+  		  					log(connect_oss.str());
 
-  					// Check if we can add the peer
-  					set<Peer>::iterator setIter = m_peers.find(peer);
+  		  					// Place listening addr and port from header into
+  		  					// new peer object
+  		  					peer.set_port(message->get_port());
+  		  					peer.set_addr(message->get_addr());
 
-  					if (setIter == m_peers.end() && 
-						m_peers.size() < MAX_PEERS)
-					{
-  						// Open sending connection of peer
-						int s = acquireSendSocket();
-						peer.set_send(s);
+  		  					// Check if we can add the peer
+  		  					set<Peer>::iterator setIter = m_peers.find(peer);
 
-						if (connectToPeer(peer)) {
-							// Send an acknowledgement of the CONNECT request
-							DescriptorHeader response(resp);
-							sendToPeer(peer, &response, NULL);
+  		  					if (setIter == m_peers.end() &&
+  								m_peers.size() < MAX_PEERS)
+  							{
+  		  						// Open sending connection of peer
+  								int s = acquireSendSocket();
+  								peer.set_send(s);
 
-							ostringstream new_peer_oss;
-							new_peer_oss << "Adding new peer.";
-							log(new_peer_oss.str());
-							m_peers.insert(peer);
-						}
-  					}
-  					// Else the peer is already known, or max peers have been
-  					// reached
-  					else {
-  						// Reject the connection
-  						close(connection);
+  								if (connectToPeer(peer)) {
+  									// Send an acknowledgement of the CONNECT
+  									// request
+  									DescriptorHeader response(resp);
+  									sendToPeer(peer, &response, NULL);
+
+  									ostringstream new_peer_oss;
+  									new_peer_oss << "Adding new peer.";
+  									log(new_peer_oss.str());
+  									m_peers.insert(peer);
+  								}
+  		  					}
+  		  					// Else the peer is already known, or max peers
+  		  					// have been reached
+  		  					else {
+  		  						// Reject the connection
+  		  						close(connection);
+  		  					}
+  		  				}
+
+  		  				delete message;
   					}
   				}
-
-  				delete message;
+  				else {
+  					error("ioctl failed while accepting new connection");
+  				}
   			}
   			else {
   				// Check if any peers sent data on their connections
@@ -877,7 +897,15 @@ public:
   							}
   							else
   							{
-  								error("ioctl failed in accept connections");
+  								error("ioctl failed in accepting peer connections");
+  								ostringstream oss;
+								oss << "Peer " << ntohs(iter->get_port()) <<
+										" closed the connection.";
+								log(oss.str());
+
+								close(iter->get_recv());
+								close(iter->get_send());
+								m_peers.erase(iter);
   							}
   						}
   						i++;
