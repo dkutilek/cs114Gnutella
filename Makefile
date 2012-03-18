@@ -2,7 +2,7 @@ CXXFLAGS =	 -g -Wall -fmessage-length=0 -fno-stack-protector
 
 OBJS =		gnutella.o descriptor_header.o payload.o util.o
 
-LIBS =		-L/usr/lib -lssl -lcrypto
+LIBS =		
 
 TARGET =	gnutella
 

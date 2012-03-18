@@ -10,6 +10,7 @@
 #include <string.h>
 #include <sstream>
 #include "util.h"
+#include "hash.h"
 using namespace std;
 
 Peer::Peer(in_addr_t addr, in_port_t port, int send, int recv,
@@ -95,7 +96,7 @@ string Peer::getServentID() {
 	string addressAndPort = address + ":" + port;
 
 	unsigned char digest[17];
-	MD5((unsigned char *)addressAndPort.c_str(), addressAndPort.length(), digest);
+	hash((unsigned char *)addressAndPort.c_str(), addressAndPort.length(), digest);
 	ss.flush();
 	ss << digest;
 	return ss.str();
