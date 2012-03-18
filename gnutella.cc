@@ -59,6 +59,11 @@ private:
 	// ID to a peer who forwarded us the PING. Built when handling PING, used
 	// when handling PONG.
 	map<Peer,map<MessageId,Peer> > m_sentPingMap;
+
+	// Map from a peer that we forwarded a QUERY to, to a map from a descriptor
+	// ID to a peer who forwarded us the QUERY.  Built when handling QUERY,
+	// used when handling QUERYHIT.
+	map<Peer,map<MessageId,Peer> > m_sentQueryMap;
   
 	void error(string msg) {
 		m_log << "[ERR " << get_time() << "] " << msg << ": "
@@ -480,7 +485,7 @@ private:
 				readDescriptorPayload(peer, *header);
 
 		if (payload == NULL)
-			return;
+ 			return;
 
 		// The first character of the payload should be the transfer rate
 		unsigned short transferRate = payload->get_speed();
@@ -490,7 +495,7 @@ private:
 			// The rest of the payload is a string that determines the file
 			// that the sender is looking for.
 			string searchCriteria = payload->get_search();
-			vector<Result> m_searchHits;
+			vector<Result> hits;
 
 			// Check if this node has a file that matches the search criteria
 			for (vector<SharedFile>::iterator file = m_fileList.begin();
@@ -499,32 +504,13 @@ private:
 				if (file->getFileName() == searchCriteria) {
 					Result result(file->getFileIndex(), file->getBytes(),
 							file->getFileName());
-					m_searchHits.push_back(result);
+					hits.push_back(result);
 				}
 			}
 
 			// If we have any hits, construct a QUERYHIT message
-			if (m_searchHits.size() > 0) {
-				string serventId = m_self.getServentID();
-
-				QueryHit_Payload *responsePayload =
-						new QueryHit_Payload(m_self.get_port(),
-								m_self.get_addr(),
-								m_maximumUploadRate,
-								m_searchHits,
-								serventId.c_str());
-
-				MessageId id = generateMessageId();
-
-				DescriptorHeader *responseHeader =
-						new DescriptorHeader(id, queryHit, DEFAULT_TTL,
-								DEFAULT_HOPS,
-								responsePayload->get_payload_len());
-
-				sendToPeer(peer, responseHeader, responsePayload);
-
-				delete responseHeader;
-				delete responsePayload;
+			if (hits.size() > 0) {
+				sendQueryHit(peer, header->get_message_id(), hits);
 			}
 		}
 
@@ -617,6 +603,23 @@ private:
 		}
 
 		delete response;
+	}
+
+	/**
+	 * Send a QUERYHIT to a given peer
+	 */
+	void sendQueryHit(Peer peer, MessageId &messageId,
+			vector<Result> resultSet)
+	{
+		string serventId = m_self.getServentID();
+
+		QueryHit_Payload payload(m_self.get_port(), m_self.get_addr(),
+				m_maximumUploadRate, resultSet, serventId.c_str());
+
+		DescriptorHeader header(messageId, queryHit, DEFAULT_TTL, DEFAULT_HOPS,
+				payload.get_payload_len());
+
+		sendToPeer(peer, &header, &payload);
 	}
 
 	// Send a PONG to a given peer
@@ -1137,7 +1140,7 @@ PING.\nFor all peers input \"all\"\n";
 										it != m_peers.end(); it++)
 					sendQuery(*it, str);
 
-				//acceptConnections(SENDQUERY_TIMEOUT);
+				acceptConnections(SENDQUERY_TIMEOUT);
 			}
 			else if (str == "7") {
 				cout << "Please enter how many seconds to listen\n#? ";
