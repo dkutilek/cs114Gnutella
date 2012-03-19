@@ -30,6 +30,7 @@
 #define BUFFER_SIZE 1024
 #define MAX_PEERS 7
 #define MAX_PING_STORAGE 32
+#define MAX_QUERY_STORAGE 32
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
@@ -85,8 +86,14 @@ private:
 		DIR *dirp = opendir(m_sharedDirectoryName.c_str());
 		
 		if (dirp == NULL) {
-			error("Could not open specified shared directory");
-			exit(1);
+			int status = mkdir(m_sharedDirectoryName.c_str(), 0777);
+
+			if (status == -1) {
+				error("Could not create specified shared directory");
+				exit(1);
+			}
+
+			dirp = opendir(m_sharedDirectoryName.c_str());
 		}
 		
 		while (true) {
@@ -490,27 +497,56 @@ private:
 		// The first character of the payload should be the transfer rate
 		unsigned short transferRate = payload->get_speed();
 
-		// Check if our upload rate matches the minimum transfer rate requested
-		if (transferRate <= m_maximumUploadRate) {
-			// The rest of the payload is a string that determines the file
-			// that the sender is looking for.
-			string searchCriteria = payload->get_search();
-			vector<Result> hits;
+		// The rest of the payload is a string that determines the file
+		// that the sender is looking for.
+		string searchCriteria = payload->get_search();
+		vector<Result> hits;
 
-			// Check if this node has a file that matches the search criteria
-			for (vector<SharedFile>::iterator file = m_fileList.begin();
-					file != m_fileList.end(); file++)
-			{
-				if (file->getFileName() == searchCriteria) {
-					Result result(file->getFileIndex(), file->getBytes(),
-							file->getFileName());
-					hits.push_back(result);
-				}
+		// Check if this node has a file that matches the search criteria
+		for (vector<SharedFile>::iterator file = m_fileList.begin();
+				file != m_fileList.end(); file++)
+		{
+			if (file->getFileName() == searchCriteria) {
+				Result result(file->getFileIndex(), file->getBytes(),
+						file->getFileName());
+				hits.push_back(result);
 			}
+		}
 
-			// If we have any hits, construct a QUERYHIT message
-			if (hits.size() > 0) {
-				sendQueryHit(peer, header->get_message_id(), hits);
+		// Send the QUERYHIT if there are any hits, and the upload rate
+		// of the local node is greater than the minimum transfer rate requested
+		if (transferRate <= m_maximumUploadRate && hits.size() > 0) {
+			sendQueryHit(peer, header->get_message_id(), hits);
+		}
+		// Otherwise pass along to all our peers
+		else {
+			for (set<Peer>::iterator iter = m_peers.begin();
+					iter != m_peers.end(); iter++)
+			{
+				if (*(iter) != peer) {
+					DescriptorHeader newHeader(header->get_message_id(),
+							query, header->get_time_to_live() - 1,
+							header->get_hops() + 1, payload->get_payload_len());
+
+					map<Peer, map<MessageId, Peer> >::iterator x =
+							m_sentQueryMap.find(*iter);
+
+					if (x != m_sentQueryMap.end()) {
+						map<MessageId,Peer>::iterator y =
+								x->second.find(header->get_message_id());
+						if (y == x->second.end()) {
+							// Clear out old QUERYs
+							while(x->second.size() >= MAX_QUERY_STORAGE) {
+								x->second.erase(x->second.begin());
+							}
+
+							x->second.insert(pair<MessageId,Peer>
+									(header->get_message_id(),peer));
+							// Forward the QUERY
+							sendToPeer(*iter, &newHeader, payload);
+						}
+					}
+				}
 			}
 		}
 
@@ -724,8 +760,18 @@ private:
 	}
 
 public:
-  	Gnutella(int port = DEFAULT_PORT, bool userNode = false) {
-		m_sharedDirectoryName = DEFAULT_SHARE_DIRECTORY;
+  	Gnutella(int port = DEFAULT_PORT, bool userNode = false,
+  			const char *shareDirectory = NULL)
+  	{
+  		if (shareDirectory == NULL) {
+  			stringstream ss;
+  			ss << DEFAULT_SHARE_DIRECTORY << "/" << port;
+  			m_sharedDirectoryName = ss.str();
+  		}
+  		else {
+  			m_sharedDirectoryName = string(shareDirectory);
+  		}
+
 		m_messageCount = 0;
 		m_userNode = userNode;
 		m_kilobyteCount = 0;
@@ -1159,32 +1205,49 @@ PING.\nFor all peers input \"all\"\n";
 				cout << "Bad option\n";
 		}
 	}
+
+	void setSharedDirectoryName(const char *directoryName) {
+		m_sharedDirectoryName = string(directoryName);
+	}
 };
 
 int main(int argc, char **argv) {
   // Check if arguments passed
   Gnutella *node;
-  if (argc >= 2) {
-	node = new Gnutella(atoi(argv[1]));
+
+  // User-controlled node with a non-default shared directory
+  if (argc >= 6 && strcmp(argv[4], "user") == 0) {
+	  node = new Gnutella(atoi(argv[1]), true, argv[5]);
   }
+  // User-controlled node with the default shared directory
+  else if (argc >= 5 && strcmp(argv[4], "user") == 0) {
+	  node = new Gnutella(atoi(argv[1]), true);
+  }
+  // Dummy node with a non-default port
+  else if (argc >= 2) {
+	  node = new Gnutella(atoi(argv[1]));
+  }
+  // Dummy node with a default port
   else {
-	node = new Gnutella();
+	  node = new Gnutella();
   }
 
+  // Bootstrap if on a non-default port
   if (argc >= 4) {
 	node->bootstrap(argv[2], atoi(argv[3]));
   }
 
-  if (argc >= 5 && strcmp(argv[4],"user") == 0) {
+  // If a user-controlled node, call the appropriate routine
+  if (argc >= 5 && strcmp(argv[4], "user") == 0) {
 	  node->activateUserNode();
 	  node->userNode();
-	  delete node;
-	  return 0;
   }
-
-  while (true) {
-	  node->periodicPing();
-	  node->acceptConnections(PERIODIC_PING);
+  // Otherwise continuously ping and accept connections
+  else {
+	  while (true) {
+		  node->periodicPing();
+		  node->acceptConnections(PERIODIC_PING);
+	  }
   }
 
   delete node;
