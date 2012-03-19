@@ -487,6 +487,87 @@ private:
 
 	// This function gets called when the node receives a QUERY message.
 	void handleQuery(DescriptorHeader *header, Peer peer) {
+		DescriptorHeader d(header->get_message_id(),
+				header->get_header_type(), header->get_time_to_live()-1,
+				header->get_hops()+1, header->get_payload_len());
+
+		Query_Payload *payload =
+				(Query_Payload *) readDescriptorPayload(peer, *header);
+
+		if (payload == NULL) {
+			return;
+		}
+
+		// Pass QUERY along to all our peers
+		for (set<Peer>::iterator it = m_peers.begin(); it != m_peers.end();
+					it++)
+		{
+			// Ignore whoever just sent us the query.
+			if ((*it) == peer) {
+				continue;
+			}
+
+			map<Peer,map<MessageId,Peer> >::iterator x =
+					m_sentQueryMap.find(*it);
+			// If there isn't a map from the message id to a peer already
+			// associated with this peer
+			if (x != m_sentQueryMap.end()) {
+				map<MessageId,Peer>::iterator y =
+								x->second.find(header->get_message_id());
+
+				if (y == x->second.end()) {
+					// Clear out old QUERYs
+					while(x->second.size() >= MAX_QUERY_STORAGE) {
+						x->second.erase(x->second.begin());
+					}
+
+					x->second.insert(pair<MessageId,Peer>
+							(header->get_message_id(),peer));
+					// Forward the QUERY
+					sendToPeer(*it, &d, payload);
+				}
+			}
+			// There wasn't a map for this peer at all
+			else {
+				map<MessageId,Peer> idToPeer;
+				idToPeer.insert(pair<MessageId,Peer>
+						(header->get_message_id(),peer));
+				m_sentQueryMap.insert(pair<Peer,map<MessageId,Peer> >
+								(*it,idToPeer));
+				// Forward the QUERY
+				sendToPeer(*it, &d, payload);
+			}
+		}
+
+		unsigned short requestedTransferRate = payload->get_speed();
+		string searchCriteria = payload->get_search();
+		vector<Result> hits;
+
+		// Check if this node has a file that matches the search criteria
+		for (vector<SharedFile>::iterator file = m_fileList.begin();
+				file != m_fileList.end(); file++)
+		{
+			if (file->getFileName() == searchCriteria) {
+				Result result(file->getFileIndex(), file->getBytes(),
+						file->getFileName());
+				hits.push_back(result);
+			}
+		}
+
+		// Build a QUERYHIT message if there are any hits, and this node
+		// can support the requested transfer rate
+		if (requestedTransferRate <= m_maximumUploadRate &&
+				hits.size() > 0)
+		{
+			sendQueryHit(peer, header->get_message_id(), hits);
+		}
+
+		delete payload;
+	}
+
+	/*
+	// This function gets called when the node receives a QUERY message.
+	void handleQuery(DescriptorHeader *header, Peer peer) {
 		// Get the payload
 		Query_Payload *payload = (Query_Payload *)
 				readDescriptorPayload(peer, *header);
@@ -552,8 +633,13 @@ private:
 
 		delete payload;
 	}
+	*/
 
-	// This function gets called when the node receives a QUERYHIT message.
+	/**
+	 * This function gets called when the node receives a QUERYHIT message.
+	 * It checks the sent query map to see if it is the actual target or if
+	 * it needs to forward the message to another peer.
+	 */
 	void handleQueryHit(DescriptorHeader *header, Peer peer) {
 		// Get the payload
 		QueryHit_Payload *payload = (QueryHit_Payload *)
@@ -562,7 +648,30 @@ private:
 		if (payload == NULL)
 			return;
 
-		// Do things with the QUERYHIT
+		// Check if we need to pass this QUERYHIT along
+		map<Peer, map<MessageId, Peer> >::iterator x =
+				m_sentQueryMap.begin();
+
+		if (x != m_sentQueryMap.end()) {
+			map<MessageId, Peer>::iterator y =
+					x->second.find(header->get_message_id());
+
+			if (y != x->second.end()) {
+				// We might be the actual target
+				if (y->second == m_self) {
+					// HANDLE THE QUERYHIT
+				}
+				// If not send it along
+				else {
+					DescriptorHeader d(header->get_message_id(),
+							header->get_header_type(),
+							header->get_time_to_live() - 1,
+							header->get_hops() + 1,
+							header->get_payload_len());
+					sendToPeer(y->second, &d, payload);
+				}
+			}
+		}
 
 		delete payload;
 	}
@@ -856,7 +965,7 @@ public:
 		case queryHit:
 			oss << "Received QUERYHIT from peer at " << ntohs(peer.get_port());
 			log(oss.str());
-			//handleQueryHit(connection, header,remoteInfo.sin_addr, remoteInfo.sin_port);
+			handleQueryHit(header, peer);
 			break;
 		case push:
 			oss << "Received PUSH from peer at " << ntohs(peer.get_port());

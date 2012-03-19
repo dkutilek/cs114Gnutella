@@ -8,3 +8,5 @@
 logs/*
 # Ignore built executable
 gnutella
+# Ignore share directory
+share/*
