@@ -3,7 +3,7 @@
  * It's not working exactly as MD5 should but it's giving back 16-byte hashes
  * which is what we want.
  */
-
+#include <cstdlib>
 #include <stdint.h>
 #include <string.h>
 
