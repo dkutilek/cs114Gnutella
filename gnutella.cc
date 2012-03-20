@@ -660,6 +660,10 @@ private:
 				// We might be the actual target
 				if (y->second == m_self) {
 					// HANDLE THE QUERYHIT
+					int num_hits = payload->get_num_hits();
+					in_addr_t addr = payload->get_ip_addr();
+					in_port_t port = payload->get_port();
+					vector<Result> hits = payload->get_result_set();
 				}
 				// If not send it along
 				else {
@@ -1237,6 +1241,40 @@ public:
 				payload.get_payload_len());
 
 		sendToPeer(peer, &header, &payload);
+
+		// Search for the target peer in the sent QUERY map
+		map<Peer,map<MessageId,Peer> >::iterator x = m_sentQueryMap.find(peer);
+
+		// If there isn't a map from the message id to a peer already
+		// associated with the target peer, create one.
+		if (x == m_sentQueryMap.end()) {
+			map<MessageId,Peer> idToPeer;
+			idToPeer.insert(pair<MessageId,Peer>
+					(header.get_message_id(), m_self));
+			m_sentQueryMap.insert(pair<Peer,map<MessageId,Peer> >
+					(peer,idToPeer));
+		}
+		// There was a map, but the message id wasn't in the inner map, add it.
+		else {
+			map<MessageId,Peer>::iterator y =
+					x->second.find(header.get_message_id());
+
+			if (y == x->second.end()) {
+				// Clear out old QUERYs
+				while(x->second.size() >= MAX_PING_STORAGE) {
+					x->second.erase(x->second.begin());
+				}
+
+				x->second.insert(pair<MessageId,Peer>
+						(header.get_message_id(), m_self));
+			}
+
+			// There was a mapping from the id to a peer, but it wasn't right.
+			// Fix that.
+			else if (y->second == m_self) {
+				// Do something?
+			}
+		}
 	}
 
 	// This function handles the user controlled
