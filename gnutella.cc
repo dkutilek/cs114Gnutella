@@ -25,6 +25,7 @@
 #include <sys/select.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <getopt.h>
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
@@ -55,6 +56,8 @@ private:
 	unsigned long m_kilobyteCount;
 	unsigned long m_messageCount;
 	bool m_userNode;
+	bool m_superNode;
+	bool m_clientNode;
 
 	// Map from a peer that we forwarded a PING to, to a map from a descriptor
 	// ID to a peer who forwarded us the PING. Built when handling PING, used
@@ -874,6 +877,7 @@ private:
 
 public:
   	Gnutella(int port = DEFAULT_PORT, bool userNode = false,
+  			bool clientNode = false, bool superNode = false,
   			const char *shareDirectory = NULL)
   	{
   		if (shareDirectory == NULL) {
@@ -1359,9 +1363,127 @@ PING.\nFor all peers input \"all\"\n";
 };
 
 int main(int argc, char **argv) {
-  // Check if arguments passed
-  Gnutella *node;
+  // Options
+  unsigned short listeningPort = DEFAULT_PORT;
+  string bootstrapAddr = "";
+  unsigned short bootstrapPort = 0;
+  bool userNode = false;
+  bool superNode = false;
+  bool clientNode = false;
+  string sharedDirectory = "";
 
+  const char *optString = "usc";
+
+  const struct option longOpts[] = {
+		  {"listen", required_argument, NULL, 0},
+		  {"bootstrap", required_argument, NULL, 0},
+		  {NULL, no_argument, NULL, 0}
+  };
+
+  int longIndex = 0;
+  int opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
+
+  while (opt != -1) {
+	  switch (opt) {
+	  case 'u':
+		  userNode = true;
+		  break;
+	  case 's':
+		  if (userNode) {
+			  cerr << "A super-node cannot be a user-controlled node." << endl;
+			  exit(1);
+		  }
+
+		  superNode = true;
+		  break;
+	  case 'c':
+		  if (superNode) {
+			  cerr << "A super-node cannot be a client node." << endl;
+			  exit(1);
+		  }
+
+		  clientNode = true;
+		  break;
+	  case 0:
+		  if (strcmp("listen", longOpts[longIndex].name) == 0) {
+			  // Get the listen port
+			  listeningPort = atoi(optarg);
+
+			  if (listeningPort <= 0 || listeningPort >= 65535) {
+				  cerr << "Invalid listening port." << endl;
+				  exit(1);
+			  }
+		  }
+		  else if (strcmp("bootstrap", longOpts[longIndex].name) == 0) {
+			  // Get the bootstrap address and port
+			  string bootstrapAddrPort(optarg);
+			  // Split the address and port
+			  int pos = bootstrapAddrPort.find_first_of(':');
+			  bootstrapAddr = bootstrapAddrPort.substr(0, pos);
+			  bootstrapPort = atoi(bootstrapAddrPort.substr(pos + 1).c_str());
+
+			  if (bootstrapPort <= 0 || bootstrapPort >= 65535) {
+				  cerr << "Invalid bootstrap port." << endl;
+				  exit(1);
+			  }
+		  }
+		  else if (strcmp("dir", longOpts[longIndex].name) == 0) {
+			  sharedDirectory = optarg;
+		  }
+		  break;
+	  default:
+		  break;
+	  }
+
+	  opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
+  }
+
+  // Supernode cannot be a user node
+  if (superNode == true && userNode == true) {
+	  cerr << "A supernode cannot be user-controlled." << endl;
+	  exit(1);
+  }
+
+  // Supernode cannot be a client node
+  if (superNode == true && clientNode == true) {
+	  cerr << "A supernode cannot be a client node." << endl;
+	  exit(1);
+  }
+
+
+  Gnutella *node;
+  if (sharedDirectory == "") {
+	  node = new Gnutella(listeningPort, userNode, clientNode, superNode, NULL);
+  }
+  else {
+	  node = new Gnutella(listeningPort, userNode, clientNode, superNode,
+			  sharedDirectory.c_str());
+  }
+
+  // Bootstrap if a non-default port
+  if (bootstrapAddr != "") {
+	  node->bootstrap(bootstrapAddr.c_str(), bootstrapPort);
+  }
+
+  // If a user-controlled node, call the user routine
+  if (userNode) {
+	  node->userNode();
+  }
+  // If a client node, accept connections without a periodic ping
+  else if (clientNode || superNode) {
+	  while (true) {
+		  node->acceptConnections();
+	  }
+  }
+  else {
+	  while (true) {
+		  node->periodicPing();
+	  	  node->acceptConnections(PERIODIC_PING);
+	  }
+  }
+
+
+  /*
   // User-controlled node with a non-default shared directory
   if (argc >= 6 && strcmp(argv[4], "user") == 0) {
 	  node = new Gnutella(atoi(argv[1]), true, argv[5]);
@@ -1395,7 +1517,7 @@ int main(int argc, char **argv) {
 		  node->periodicPing();
 		  node->acceptConnections(PERIODIC_PING);
 	  }
-  }
+  }*/
 
   delete node;
 
