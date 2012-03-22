@@ -468,7 +468,8 @@ private:
 
 					// Connect to the peer if we don't already know about it
 					// and we can accept more peers.
-					if (iter == m_peers.end() && m_peers.size() < MAX_PEERS) {
+					if (new_peer != m_self && iter == m_peers.end()
+							&& m_peers.size() < MAX_PEERS) {
 						gnutellaConnect(&new_peer, CONNECT_TIMEOUT);
 					}
 					else {
