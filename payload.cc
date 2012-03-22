@@ -277,7 +277,55 @@ vector<Result> QueryHit_Payload::get_result_set() {
 const char *QueryHit_Payload::get_servent_id() {
 	return m_servent_id;
 }
+/* HTTPget_Payload method */
 
+HTTPget_Payload::HTTPget_Payload(unsigned long file_index, unsigned long file_size, 
+								string file_name)	
+{
+	//convert file_index to string
+	char temp_fi[20];
+	sprintf(temp_fi, "%lu", file_index);
+	string s_file_index = temp_fi;
+
+	//convert file_size to string
+	char temp_fs[20];
+	sprintf(temp_fs, "%lu", file_size);
+	string s_file_size = temp_fs;
+
+	//
+	m_request = "GET /get/" + s_file_index + "/" + file_name 
+		+ "/ HTTP/1.0\r\nConnection: Keep-Alive\r\nRange: bytes=0-\r\n\r";
+
+	
+	m_payload_len = m_request.length()+1; //additional "\n" added to cstring
+	m_payload = (char *) malloc (m_payload_len);
+
+	strcpy(m_payload, m_request.c_str());
+	
+	
+}
+/* HTTPok_Payload method */
+
+HTTPok_Payload::HTTPok_Payload(unsigned long file_size)
+{
+
+	//convert file_size to string
+	char temp_fs[20];
+	sprintf(temp_fs, "%lu", file_size);
+	string s_file_size = temp_fs;
+
+	//
+	m_response = "HTTP 200 OK\r\nServer: Gnutella\r\nContent-type: application/binary\r\nContent-length: "
+				+ s_file_size + "\r\n\r\n";
+
+	
+	m_payload_len = m_response.length()+1; //additional "\n" added to cstring
+	m_payload = (char *) malloc (m_payload_len);
+
+	strcpy(m_payload, m_response.c_str());
+	
+	
+}
 /* Push_Payload methods */
 
 Push_Payload::Push_Payload(const char * servent_id, unsigned long file_index,
