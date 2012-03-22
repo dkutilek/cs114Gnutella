@@ -7,6 +7,7 @@
 
 #include <string.h>
 #include <cstdlib>
+#include <cstdio>
 #include "payload.h"
 #include "util.h"
 

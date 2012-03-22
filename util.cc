@@ -111,11 +111,26 @@ MessageId::MessageId(Peer& peer, unsigned long * messageCount) {
 	size_t len = 0;
 	memcpy(m_id+len, &cur, sizeof(time_t));
 	len += sizeof(time_t);
-	memcpy(m_id+len, &addr, sizeof(in_addr_t));
-	len += sizeof(in_addr_t);
-	memcpy(m_id+len, &port, sizeof(in_port_t));
-	len += sizeof(in_port_t);
-	memcpy(m_id+len, messageCount, sizeof(unsigned long));
+	if (len + sizeof(in_addr_t) <= MESSAGEID_LEN) {
+		memcpy(m_id+len, &addr, sizeof(in_addr_t));
+		len += sizeof(in_addr_t);
+		if (len + sizeof(in_port_t) <= MESSAGEID_LEN) {
+			memcpy(m_id+len, &port, sizeof(in_port_t));
+			len += sizeof(in_port_t);
+			if (len + sizeof(unsigned long) <= MESSAGEID_LEN) {
+				memcpy(m_id+len, messageCount, sizeof(unsigned long));
+			}
+			else {
+				memcpy(m_id+len, messageCount, MESSAGEID_LEN - len);
+			}
+		}
+		else {
+			memcpy(m_id+len, &port, MESSAGEID_LEN - len);
+		}
+	}
+	else {
+		memcpy(m_id+len, &addr, MESSAGEID_LEN - len);
+	}
 }
 
 MessageId::MessageId(const char * buf) {

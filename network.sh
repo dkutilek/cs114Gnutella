@@ -62,7 +62,7 @@ while true; do
      COUNT=0
      MODCOUNT=0
      BOOTPORT=$PORT
-     ./gnutella $PORT &
+     ./gnutella --listen=$PORT &
      let "PORT += 2"
      let "NUMNODES -= 1"
      let "COUNT += 1"
@@ -72,7 +72,7 @@ while true; do
          if [ "$MODCOUNT" -eq 0 ]; then
            let "BOOTPORT += 2"
          fi
-         ./gnutella $PORT 127.0.0.1 $BOOTPORT &
+         ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT &
          let "PORT += 2"
          let "NUMNODES -= 1"
          let "COUNT += 1"
@@ -100,7 +100,7 @@ while true; do
 
     # Start user control Gnutella node
     elif [ "$opt" = "User" ]; then
-      ./gnutella $PORT 127.0.0.1 $BOOTPORT user
+      ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -u
 
     # Exit script
     elif [ "$opt" = "Exit" ]; then
