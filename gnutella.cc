@@ -321,7 +321,7 @@ private:
 						<< type_to_str(header.get_header_type())
 						<< " from peer at "	<< ntohs(peer.get_port());
 				error(oss.str());
-				delete buffer;
+				delete[] buffer;
 				return NULL;
 			}
 
@@ -846,7 +846,7 @@ private:
 			error(logoss.str());
 			return;
 		}
-		delete [] buff;
+		delete[] buff;
 	}
 
 	// Send a header and a payload over an already opened connection.
