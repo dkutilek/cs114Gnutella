@@ -1003,7 +1003,7 @@ public:
   			sockaddr_in remoteInfo;
   			int connection = getConnectionRequest(&remoteInfo, 1);
 
-  			// Connection accepted, check if they sent a CONNECT request
+  			// Connection accepted
   			if (connection != -1) {
   				// Check to make sure we won't block on the connection
   				int bytesAvailable;
@@ -1014,6 +1014,7 @@ public:
   		  				peer.set_recv(connection);
   		  				DescriptorHeader *message = readDescriptorHeader(peer);
 
+  		  				// If the message is a CONNECT message
   		  				if (message != NULL &&
   		  						message->get_header_type() == con) {
   		  					ostringstream connect_oss;
@@ -1055,6 +1056,22 @@ public:
   		  						close(connection);
   		  					}
   		  				}
+  		  				// Else this is a HTTP GET message
+  		  				/*
+  		  				 * else if (message != NULL &&
+  		  						message->get_header_type() == httpGet) {
+  		  					ostringstream connect_oss;
+  		  					connect_oss << "Received HTTP GET from peer at " <<
+  									ntohs(message->get_port()) << ". ";
+  		  					log(connect_oss.str());
+
+  		  					// Do stuff with the GET message, both send and
+  		  					 * receives happen on 'connection' variable.
+  		  					 * Close the connection when done.
+							}
+
+
+  		  				 */
 
   		  				delete message;
   					}
