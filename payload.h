@@ -89,6 +89,22 @@ public:
 	const char *get_servent_id();
 };
 
+class HTTPget_Payload : public Payload {
+private: 
+	string m_request;
+public:
+	HTTPget_Payload(unsigned long file_index, unsigned long file_size, string file_name);
+	string get_request() { return m_request; }
+};
+
+class HTTPok_Payload : public Payload {
+private:
+	string m_response;
+public:
+	HTTPok_Payload(unsigned long file_size);
+	string get_response() { return m_response; }
+};	
+
 class Push_Payload : public Payload {
 private:
 	char m_servent_id[16];
