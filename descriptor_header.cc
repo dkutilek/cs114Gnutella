@@ -49,6 +49,13 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	case (char) 0x40:
 		m_type = push;
 		break;
+	//adding new payload ids for httpget and httpok -DG-
+	case (char) 0x10:
+		m_type = httpget;
+		break;
+	case (char) 0x11:
+		m_type = httpok;
+		break;
 	default:
 
 		break;
@@ -82,6 +89,17 @@ DescriptorHeader::DescriptorHeader(header_type type)
 		return;
 	}
 
+	/* if type == httpget place proper get message
+	
+	if(type == httpget) {	
+		m_type = httpget;
+		return;
+	}
+	if(type == httpok) {	
+		m_type = httpok;
+		return;
+	}*/
+
 }
 
 DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
@@ -111,6 +129,13 @@ DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 		break;
 	case push:
 		m_header[16] = 64;
+		break;
+	// adding new cases for httpget and httpok -DG-
+	case httpget:
+		m_header[16] = 16;
+		break;
+	case httpok:
+		m_header[16] = 17;
 		break;
 	default:
 		break;
