@@ -1227,8 +1227,32 @@ public:
   									m_peers.insert(peer);
   								}
   		  					}
-  		  					// Else the peer is already known, or max peers
-  		  					// have been reached
+  		  					// Else the peer is known, update it
+  		  					else if (setIter != m_peers.end()) {
+  		  						close(setIter->get_recv());
+  		  						close(setIter->get_send());
+  		  						m_peers.erase(setIter);
+  		  						int s = acquireSendSocket();
+  		  						peer.set_send(s);
+
+  		  						if (connectToPeer(peer)) {
+									// Send an acknowledgement of the CONNECT
+									// request
+									DescriptorHeader response(resp);
+									sendToPeer(peer, &response, NULL);
+
+									ostringstream new_peer_oss;
+									new_peer_oss << "Updating peer.";
+									log(new_peer_oss.str());
+									m_peers.insert(peer);
+  		  						}
+  		  						else {
+  		  							// Close connections
+  		  							close(peer.get_recv());
+  		  							close(peer.get_send());
+  		  						}
+  		  					}
+  		  					// Max peers have been reached
   		  					else {
   		  						// Reject the connection
   		  						close(connection);
@@ -1582,10 +1606,12 @@ format: <peer #>.<file #>\n";
 					if (delim != string::npos) {
 						int peer_num = atoi(str.substr(0,delim).c_str());
 						int file_num = atoi(str.substr(delim,str.length()).c_str());
-						if (peer_num > 0 && peer_num < m_queryHits.size()) {
+						if (peer_num > 0 &&
+								(size_t) peer_num < m_queryHits.size()) {
 							QueryHit_Payload payload = m_queryHits.at(peer_num);
 							vector<Result> results = payload.get_result_set();
-							if (file_num > 0 &&	file_num < results.size()) {
+							if (file_num > 0 &&
+									(size_t) file_num < results.size()) {
 								vector<Result> file;
 								file.push_back(results.at(file_num));
 								sendHTTPget(payload.get_port(),
