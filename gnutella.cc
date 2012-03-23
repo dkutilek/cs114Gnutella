@@ -162,6 +162,11 @@ private:
 			exit(1);
 		}
 
+		// Add non-blocking flag.
+		int x;
+		x = fcntl(sock, F_GETFL, 0);
+		fcntl(sock, F_SETFL, x | O_NONBLOCK);
+
 		// Reuse addresses that are in TIME_WAIT
 		int tr = 1;
 		if (setsockopt(sock, SOL_SOCKET,SO_REUSEADDR, &tr, sizeof(int)) 
@@ -227,29 +232,17 @@ private:
 		memset(remoteInfo, 0, sizeof(sockaddr_in));
 		socklen_t addrLength = sizeof (sockaddr);
 
-		if (timeout != 0) {
-			pollfd pfd;
-			pfd.fd = m_self.get_recv();
-			pfd.events = POLLIN;
+		time_t starttime = time(NULL);
 
-			int retval = poll(&pfd, 1, timeout*100);
-
-			if (retval == -1) {
-				error("Poll on listening port failed");
-				return -1;
-			}
-			else if (retval == 0) {
-				return -1;
-			}
-			else {
-			 	return accept(m_self.get_recv(), (sockaddr *) remoteInfo,
+		int result = -1;
+		while (timeout == 0 || difftime(time(NULL), starttime) < timeout) {
+			result = accept(m_self.get_recv(), (sockaddr *) remoteInfo,
 			 			&addrLength);
-			}
+			if (result != -1)
+				break;
 		}
-		else {
-			return accept(m_self.get_recv(), (sockaddr *) remoteInfo,
-					&addrLength);
-		}
+
+		return result;
 	}
 	
 	/**
