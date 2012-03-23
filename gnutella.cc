@@ -53,10 +53,12 @@ private:
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
 	vector<SharedFile> m_fileList;
+
 	unsigned long m_messageCount;
 	bool m_userNode;
 	bool m_superNode;
 	bool m_clientNode;
+	string m_searching_for_file_name;
 
 	// Map from a peer that we forwarded a PING to, to a map from a descriptor
 	// ID to a peer who forwarded us the PING. Built when handling PING, used
@@ -85,9 +87,10 @@ private:
 	// Call this function to read the filenames in the directory
 	// m_sharedDirectoryName into the vector m_fileList
 	void readSharedDirectoryFiles() {
+
 		unsigned long kilobyteCount = 0;
 		m_fileList.clear();
-
+		
 		DIR *dirp = opendir(m_sharedDirectoryName.c_str());
 		
 		if (dirp == NULL) {
@@ -134,7 +137,7 @@ private:
 			error("Could not close directory");
 			exit(1);
 		}
-
+		
 		m_self.set_numSharedKilobytes(kilobyteCount);
 		m_self.set_numSharedFiles(m_fileList.size());
 	}
@@ -349,6 +352,12 @@ private:
 			break;
 		case queryHit:
 			payload = new QueryHit_Payload(buffer, payloadSize);
+			break;
+		case httpget:
+			payload = new HTTPget_Payload(buffer, payloadSize);
+			break;
+		case httpok:
+			payload = new HTTPok_Payload(buffer, payloadSize);
 			break;
 		case push:
 			payload = new Push_Payload(buffer);
@@ -673,6 +682,10 @@ private:
 					in_addr_t addr = payload->get_ip_addr();
 					in_port_t port = payload->get_port();
 					vector<Result> hits = payload->get_result_set();
+
+					//QueryHit needs to prompt user to ask to do
+					// direct download (call sendHTTPget) OR
+					// Push along same path
 				}
 				// If not send it along
 				else {
@@ -689,6 +702,56 @@ private:
 		delete payload;
 	}
 
+	//pretty much parse and call sendHTTPok in response
+	void handleHTTPget(int connection, DescriptorHeader *header, Peer peer)
+	{
+		// Get the payload
+		HTTPget_Payload *payload = (HTTPget_Payload *)
+				readDescriptorPayload(peer, *header);
+
+		string request = payload->get_request();
+		unsigned int slash_position = request.find('/', 9);
+		string s_file_index = request.substr(9, slash_position - 9);
+		unsigned int file_index = atoi(s_file_index.c_str());
+
+		sendHTTPok(connection, file_index);
+		
+	}
+
+	//parse the message and create a buffer[file_size] into which we'll read the file
+	void handleHTTPok(int connection, DescriptorHeader *header, Peer peer)
+	{
+		// Get the payload
+		HTTPok_Payload *payload = (HTTPok_Payload *)
+				readDescriptorPayload(peer, *header);
+				
+		string response = payload->get_response();
+		int s_size = response.find('\r', 80) - 81;
+		string s_file_size = response.substr(81, s_size);
+
+		int file_size = atoi(s_file_size.c_str());
+
+		char * buffer;
+		buffer = (char*) malloc (file_size);
+		if (buffer == NULL) {fputs ("Memory error",stderr); exit (2);}
+		
+		read(connection, buffer, file_size);
+
+		string path = m_sharedDirectoryName + "/" + m_searching_for_file_name;
+
+		//create new file 
+		ofstream outfile (path.c_str());
+		FILE * pFile2;
+		pFile2 = fopen(path.c_str(), "wb");
+		fwrite (buffer , 1 , file_size , pFile2);
+
+		//re-read shared files and add our new file
+		readSharedDirectoryFiles();
+
+		close(connection);
+		
+		
+	}
 	// This function gets called when the node receives a PUSH message.
 	void handlePush(DescriptorHeader *header, Peer peer) {
 		// Get the payload
@@ -790,6 +853,106 @@ private:
 		sendToPeer(peer, &header, &payload);
 	}
 
+	// Send a HTTPget request to <ip_addr,port>
+	void sendHTTPget(in_port_t port, in_addr_t ip_addr, vector<Result> resultSet) 
+	{
+
+		if(resultSet.size() == 0)
+			error("Empty result set, query did not find file.");
+
+		//currently just choose first result from set
+		unsigned long file_index = resultSet[0].get_file_index();
+		unsigned long file_size = resultSet[0].get_file_size();
+		string file_name = resultSet[0].get_file_name();
+
+		//record name of file we are searching for to save
+		// as same file_name when received. 	
+		m_searching_for_file_name = file_name;
+		
+		HTTPget_Payload payload(file_index, file_size, file_name);
+		MessageId id = generateMessageId();
+		DescriptorHeader header(id, httpget, DEFAULT_TTL, DEFAULT_HOPS, payload.get_payload_len());
+
+		int sock = acquireSendSocket();
+		//Peer new_peer(ip_addr, port, sock, -1);
+
+		sockaddr_in nodeInfo;
+		remoteInfoSetup(&nodeInfo, ip_addr, port);
+		
+		int status;
+		time_t starttime = time(NULL);
+		while ((status = connect(sock, (sockaddr *) &nodeInfo,
+				sizeof(nodeInfo))) == -1 &&
+				difftime(time(NULL), starttime) < CONNECT_TIMEOUT
+				&& errno == EADDRINUSE){};
+		if (status == -1) {
+			ostringstream oss;
+			oss << "Could not connect to peer at " << ntohs(port);
+			error(oss.str());
+		}
+		sendOverConnection(sock, &header, &payload);
+							
+	}
+
+	// Send a HTTPok response along same connection that received the HTTPget request
+	void sendHTTPok(int connection, unsigned long file_index)
+	{
+		unsigned int file_index_int = file_index;
+		int file_size;
+		string file_name;
+		// Check if this node has a file that matches the file index requested
+		for (vector<SharedFile>::iterator file = m_fileList.begin();
+				file != m_fileList.end(); file++)
+		{
+			if (file->getFileIndex() == file_index_int) {
+				file_size = file->getBytes();
+				file_name = file->getFileName();
+			}
+		}
+	
+		HTTPok_Payload payload(file_size);
+		MessageId id = generateMessageId();
+		DescriptorHeader header(id, httpok, DEFAULT_TTL, DEFAULT_HOPS, payload.get_payload_len());
+
+		//send the ok message back to the node that sent the get message
+		sendOverConnection(connection, &header, &payload);
+		
+		//get path of file	
+		string path = m_sharedDirectoryName + "/" + file_name;
+
+		//read the file into a buffer
+		FILE * pFile;
+	    long lSize;
+	    char * buffer;
+	    size_t result;
+
+	    pFile = fopen ( path.c_str() , "r" );
+	    if (pFile==NULL) {fputs ("File error",stderr); exit (1);}
+
+	    // obtain file size:
+	    fseek (pFile , 0 , SEEK_END);
+	    lSize = ftell (pFile);
+	    rewind (pFile);
+
+	    // allocate memory to contain the whole file:
+	    buffer = (char*) malloc (sizeof(char)*lSize);
+	    if (buffer == NULL) {fputs ("Memory error",stderr); exit (2);}
+
+	    // copy the file into the buffer:
+	    result = fread (buffer,1,lSize,pFile);
+	    if (result != lSize) {fputs ("Reading error",stderr); exit (3);}
+
+	    /* the whole file is now loaded in the memory buffer. */
+
+	    fclose (pFile);
+
+		//write the file to the socket 
+	    write(connection, buffer, result);
+
+	    free(buffer);
+
+		
+	}
 	/*
 	void sendToAddrPort(in_addr addr, in_port_t port, DescriptorHeader* header,
 			Payload* payload) {
@@ -897,6 +1060,7 @@ public:
 
 		m_messageCount = 0;
 		m_userNode = userNode;
+
 		
 		// Open the log
 		char str[15];
@@ -907,6 +1071,8 @@ public:
 	  		cerr << "Could not open log file: " << strerror(errno) << endl;
 	  		exit(1);
 		}
+		
+	
 
 		// Acquire the listen socket
 		int sock = acquireListenSocket(port);
@@ -1007,7 +1173,7 @@ public:
   			sockaddr_in remoteInfo;
   			int connection = getConnectionRequest(&remoteInfo, 1);
 
-  			// Connection accepted
+  			// Connection accepted, check if they sent a CONNECT request
   			if (connection != -1) {
   				// Check to make sure we won't block on the connection
   				int bytesAvailable;
@@ -1018,7 +1184,6 @@ public:
   		  				peer.set_recv(connection);
   		  				DescriptorHeader *message = readDescriptorHeader(peer);
 
-  		  				// If the message is a CONNECT message
   		  				if (message != NULL &&
   		  						message->get_header_type() == con) {
   		  					ostringstream connect_oss;
@@ -1060,22 +1225,37 @@ public:
   		  						close(connection);
   		  					}
   		  				}
-  		  				// Else this is a HTTP GET message
-  		  				/*
-  		  				 * else if (message != NULL &&
-  		  						message->get_header_type() == httpGet) {
+						// Else this is a HTTP GET message
+  		  				
+  		  				 else if (message != NULL &&
+  		  						message->get_header_type() == httpget) {
   		  					ostringstream connect_oss;
-  		  					connect_oss << "Received HTTP GET from peer at " <<
+  		  					connect_oss << "Received HTTPget from peer at " <<
   									ntohs(message->get_port()) << ". ";
   		  					log(connect_oss.str());
 
   		  					// Do stuff with the GET message, both send and
-  		  					 * receives happen on 'connection' variable.
-  		  					 * Close the connection when done.
+  		  					// receives happen on 'connection' variable.
+  		  					//Close the connection when done.
+  		  					 handleHTTPget(connection, message, peer);
+  		  					 
+							}
+						else if (message != NULL &&
+  		  						message->get_header_type() == httpok) {
+  		  					ostringstream connect_oss;
+  		  					connect_oss << "Received HTTPok from peer at " <<
+  									ntohs(message->get_port()) << ". ";
+  		  					log(connect_oss.str());
+
+  		  					// Do stuff with the OK message, both send and
+  		  					// receives happen on 'connection' variable.
+  		  					//Close the connection when done.
+  		  					 handleHTTPok(connection, message, peer);
+  		  					 
 							}
 
 
-  		  				 */
+  		  				 
 
   		  				delete message;
   					}
@@ -1358,6 +1538,8 @@ PING.\nFor all peers input \"all\"\n";
 										it != m_peers.end(); it++)
 					sendQuery(*it, str);
 
+				
+				
 				acceptConnections(SENDQUERY_TIMEOUT);
 			}
 			else if (str == "7") {
