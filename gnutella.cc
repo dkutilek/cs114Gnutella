@@ -122,15 +122,27 @@ private:
 
 			string path = m_sharedDirectoryName + "/" + filename;
 
-			struct stat buf;
-			if (stat(path.c_str(), & buf) == -1) {
+			//read the file into a buffer
+			FILE * p_File;
+			long l_Size = 0;
+
+			p_File = fopen ( path.c_str() , "r" );
+			if (p_File==NULL) {fputs ("File error",stderr); exit (1);}
+
+			// obtain file size:
+			fseek (p_File , 0 , SEEK_END);
+			l_Size = ftell (p_File);
+			rewind (p_File);
+			
+			
+			if (l_Size == 0) {
 				ostringstream oss;
 				oss << "Failed to get file size of " << filename;
 				error(oss.str());
 			}
 			else {
-				kilobyteCount += buf.st_size / 1000;
-				SharedFile file(filename, buf.st_size);
+				kilobyteCount += (l_Size * 1000);
+				SharedFile file(filename, l_Size);
 				m_fileList.push_back(file);
 			}
 		}
