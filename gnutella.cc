@@ -32,6 +32,7 @@
 #define MAX_PEERS 7
 #define MAX_PING_STORAGE 32
 #define MAX_QUERY_STORAGE 32
+#define MAX_QUERY_HIT_STORAGE 32
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
@@ -40,6 +41,7 @@
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
+#define HTTP_TIMEOUT 5
 #define PERIODIC_PING 20
 
 using namespace std;
@@ -53,7 +55,7 @@ private:
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
 	vector<SharedFile> m_fileList;
-
+	vector<QueryHit_Payload> m_queryHits;
 	unsigned long m_messageCount;
 	bool m_userNode;
 	bool m_superNode;
@@ -677,11 +679,12 @@ private:
 			if (y != x->second.end()) {
 				// We might be the actual target
 				if (y->second == m_self) {
-					// HANDLE THE QUERYHIT
-					int num_hits = payload->get_num_hits();
-					in_addr_t addr = payload->get_ip_addr();
-					in_port_t port = payload->get_port();
-					vector<Result> hits = payload->get_result_set();
+					// Clear out old values
+					while(m_queryHits.size() > MAX_QUERY_STORAGE) {
+						m_queryHits.erase(m_queryHits.begin());
+					}
+					// Add the QUERYHIT to the QUERYHIT vector
+					m_queryHits.push_back(*payload);
 
 					//QueryHit needs to prompt user to ask to do
 					// direct download (call sendHTTPget) OR
@@ -1020,28 +1023,28 @@ private:
 	// Send a header and a payload over an already opened connection.
 	void sendOverConnection(int connection, DescriptorHeader* header,
 			Payload* payload) {
-		int status = send(connection, header->get_header(), HEADER_SIZE, 0);
-		if (status == -1) {
+
+		// Consolidate the header and payload into one buffer
+		long len = HEADER_SIZE;
+		if (payload != NULL)
+			len+= header->get_payload_len();
+		char * buff = new char[len+1];
+		memcpy(buff, header->get_header(), HEADER_SIZE);
+		if (payload != NULL)
+			memcpy(buff+HEADER_SIZE, payload->get_payload(),
+					header->get_payload_len());
+		buff[len] = 0;
+
+		// Send all at once
+		int status = send(connection, buff, len, 0);
+		if (status != len) {
 			ostringstream logoss;
 			logoss << "Failed to send "
-					<< type_to_str(header->get_header_type())
-					<< " request to peer at on connection " << connection;
+					<< type_to_str(header->get_header_type());
 			error(logoss.str());
 			return;
 		}
-		if (payload != NULL) {
-			status = send(connection, payload->get_payload(),
-					payload->get_payload_len(), 0);
-			if (status < 0 ||
-					(unsigned int) status != payload->get_payload_len()) {
-				ostringstream logoss;
-				logoss << "Failed to send "
-						<< type_to_str(header->get_header_type())
-						<< " payload to peer on connection " << connection;
-				error(logoss.str());
-				return;
-			}
-		}
+		delete[] buff;
 	}
 
 public:
@@ -1152,6 +1155,12 @@ public:
 			break;
 		case resp:
 			// Do nothing
+			break;
+		case httpget:
+			// do nothing, an existing peer should not be sending this message.
+			break;
+		case httpok:
+			// do nothing, an existing peer should not be sending this message.
 			break;
 		}
 
@@ -1487,10 +1496,10 @@ public:
 	{
 		string str;
 		while (true) {
-			cout << "5) Ping\n6) Query\n7) Accept Connections\n\
-8) Exit to network.sh\n#? ";
+			cout << "1) Ping\n2) Query\n3) Review Query Hits\n4) List Shared\
+Files\n5) Accept Connections\n6) Exit to network.sh\n#? ";
 			cin >> str;
-			if (str == "5") {
+			if (str == "1") {
 				size_t i = 0;
 				vector<Peer> peers_all, peers;
 				for (set<Peer>::iterator p = m_peers.begin();
@@ -1531,7 +1540,7 @@ PING.\nFor all peers input \"all\"\n";
 
 				acceptConnections(PING_TIMEOUT);
 			}
-			else if (str == "6") {
+			else if (str == "2") {
 				cout << "Please enter a filename to search for\n#? ";
 				cin >> str;
 				for (set<Peer>::iterator it = m_peers.begin();
@@ -1542,7 +1551,68 @@ PING.\nFor all peers input \"all\"\n";
 				
 				acceptConnections(SENDQUERY_TIMEOUT);
 			}
-			else if (str == "7") {
+			else if (str == "3") {
+				if (m_queryHits.size() == 0) {
+					cout << "No query hits available.\n";
+					continue;
+				}
+				size_t i = 1;
+				for (vector<QueryHit_Payload>::iterator q = m_queryHits.begin();
+						q != m_queryHits.end(); q++) {
+					in_addr addr;
+					addr.s_addr = q->get_ip_addr();
+					cout << i << ". " << inet_ntoa(addr) << " "
+							<< ntohs(q->get_port()) << "\n";
+					size_t j = 1;
+					for (vector<Result>::iterator r =
+							q->get_result_set().begin();
+							r != q->get_result_set().end(); r++) {
+						cout << "\t" << j << ". " << r->get_file_name() << " "
+								<< r->get_file_size() << "\n";
+						j++;
+					}
+					i++;
+				}
+				cout << "Select the file you wish to download using this \
+format: <peer #>.<file #>\n";
+				while (true) {
+					cout << "#? ";
+					cin >> str;
+					size_t delim = str.find_first_of('.');
+					if (delim != string::npos) {
+						int peer_num = atoi(str.substr(0,delim).c_str());
+						int file_num = atoi(str.substr(delim,str.length()).c_str());
+						if (peer_num > 0 && peer_num < m_queryHits.size()) {
+							QueryHit_Payload payload = m_queryHits.at(peer_num);
+							vector<Result> results = payload.get_result_set();
+							if (file_num > 0 &&	file_num < results.size()) {
+								vector<Result> file;
+								file.push_back(results.at(file_num));
+								sendHTTPget(payload.get_port(),
+										payload.get_ip_addr(), file);
+								acceptConnections(HTTP_TIMEOUT);
+								break;
+							}
+							else {
+								cout << "Bad input\n";
+							}
+						}
+						else {
+							cout << "Bad input\n";
+						}
+					}
+					else {
+						cout << "Bad input\n";
+					}
+				}
+			}
+			else if (str == "4") {
+				for (vector<SharedFile>::iterator f = m_fileList.begin();
+						f != m_fileList.end(); f++) {
+					cout << f->getFileName() << " " << f->getBytes() << "\n";
+				}
+			}
+			else if (str == "5") {
 				cout << "Please enter how many seconds to listen\n#? ";
 				cin >> str;
 				int timeout = atoi(str.c_str());
@@ -1553,7 +1623,7 @@ PING.\nFor all peers input \"all\"\n";
 					acceptConnections(timeout);
 				}
 			}
-			else if (str == "8")
+			else if (str == "6")
 				return;
 			else
 				cout << "Bad option\n";
