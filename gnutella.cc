@@ -29,20 +29,21 @@
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
-#define MAX_PEERS 7
+#define MAX_PEERS 3
 #define MAX_PING_STORAGE 32
 #define MAX_QUERY_STORAGE 32
 #define MAX_QUERY_HIT_STORAGE 32
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
-#define DEFAULT_TTL 4
+#define DEFAULT_TTL 3
 #define DEFAULT_HOPS 0
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
 #define HTTP_TIMEOUT 5
-#define PERIODIC_PING 20
+#define PERIODIC_PING 60
+#define BOOT_WAIT 20
 
 using namespace std;
 
@@ -304,7 +305,10 @@ private:
 		int bytesAvailable;
 		if (ioctl(peer.get_recv(), FIONREAD, &bytesAvailable) == 0) {
 			if (bytesAvailable < payloadSize) {
-				log("bytesAvailable < payloadSize");
+				ostringstream oss;
+				oss << "bytesAvailable = " << bytesAvailable << "\n" <<
+						"payloadSize = " << payloadSize << "\n";
+				error(oss.str());
 				return NULL;
 			}
 		}
@@ -1780,6 +1784,7 @@ int main(int argc, char **argv) {
 	  }
   }
   else {
+	  node->acceptConnections(BOOT_WAIT);
 	  while (true) {
 		  node->periodicPing();
 	  	  node->acceptConnections(PERIODIC_PING);

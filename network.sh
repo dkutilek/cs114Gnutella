@@ -68,11 +68,12 @@ while true; do
      let "COUNT += 1"
      while [ "$NUMNODES" != "0" ];
        do
-         let "MODCOUNT = COUNT % 5"
+         let "MODCOUNT = COUNT % 3"
          if [ "$MODCOUNT" -eq 0 ]; then
            let "BOOTPORT += 2"
          fi
          ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT &
+         sleep 1
          let "PORT += 2"
          let "NUMNODES -= 1"
          let "COUNT += 1"

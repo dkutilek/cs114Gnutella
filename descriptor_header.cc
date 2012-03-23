@@ -154,7 +154,7 @@ DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 	m_header[20] = bit_mask & (payload_len >> (2*CHAR_BIT));
 	m_header[21] = bit_mask & (payload_len >> (1*CHAR_BIT));
 	m_header[22] = bit_mask & (payload_len);
-	m_payload_len = payload_len;	
+	m_payload_len = payload_len;
 }
 
 DescriptorHeader::DescriptorHeader(in_port_t port, in_addr_t addr) {
