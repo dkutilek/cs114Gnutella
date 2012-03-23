@@ -1605,15 +1605,15 @@ format: <peer #>.<file #>\n";
 					size_t delim = str.find_first_of('.');
 					if (delim != string::npos) {
 						int peer_num = atoi(str.substr(0,delim).c_str());
-						int file_num = atoi(str.substr(delim,str.length()).c_str());
+						int file_num = atoi(str.substr(delim+1,str.length()).c_str());
 						if (peer_num > 0 &&
-								(size_t) peer_num < m_queryHits.size()) {
-							QueryHit_Payload payload = m_queryHits.at(peer_num);
+								(size_t) peer_num <= m_queryHits.size()) {
+							QueryHit_Payload payload = m_queryHits.at(peer_num-1);
 							vector<Result> results = payload.get_result_set();
 							if (file_num > 0 &&
-									(size_t) file_num < results.size()) {
+									(size_t) file_num <= results.size()) {
 								vector<Result> file;
-								file.push_back(results.at(file_num));
+								file.push_back(results.at(file_num-1));
 								sendHTTPget(payload.get_port(),
 										payload.get_ip_addr(), file);
 								acceptConnections(HTTP_TIMEOUT);
