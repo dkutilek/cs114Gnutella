@@ -293,7 +293,7 @@ HTTPget_Payload::HTTPget_Payload(unsigned long file_index, unsigned long file_si
 	sprintf(temp_fs, "%lu", file_size);
 	string s_file_size = temp_fs;
 
-	//
+	//Get /get/12345/
 	m_request = "GET /get/" + s_file_index + "/" + file_name 
 		+ "/ HTTP/1.0\r\nConnection: Keep-Alive\r\nRange: bytes=0-\r\n\r";
 
@@ -304,6 +304,13 @@ HTTPget_Payload::HTTPget_Payload(unsigned long file_index, unsigned long file_si
 	strcpy(m_payload, m_request.c_str());
 	
 	
+}
+HTTPget_Payload::HTTPget_Payload(const char * payload, unsigned long payload_len) 
+{
+	m_payload_len = payload_len;
+	m_payload = (char *) malloc(payload_len);
+	memcpy(m_payload, payload, payload_len);
+	m_request = m_payload;
 }
 /* HTTPok_Payload method */
 
@@ -324,9 +331,18 @@ HTTPok_Payload::HTTPok_Payload(unsigned long file_size)
 	m_payload = (char *) malloc (m_payload_len);
 
 	strcpy(m_payload, m_response.c_str());
-	
-	
+		
 }
+HTTPok_Payload::HTTPok_Payload(const char * payload, unsigned long payload_len) 
+{
+	m_payload_len = payload_len;
+	m_payload = (char *) malloc(payload_len);
+	memcpy(m_payload, payload, payload_len);
+	m_response = m_payload;
+	
+
+}
+
 /* Push_Payload methods */
 
 Push_Payload::Push_Payload(const char * servent_id, unsigned long file_index,
