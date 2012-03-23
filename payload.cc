@@ -164,7 +164,7 @@ Result::Result(const char * result, unsigned long length) {
 
 	// File Name
 	m_file_name = "";
-	for (unsigned long i = 2; i < length && result[i] != 0; i++) {
+	for (unsigned long i = 8; i < length && result[i] != 0; i++) {
 		m_file_name.push_back(result[i]);
 	}
 }
@@ -200,7 +200,7 @@ QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 	m_payload_len += 16;
 	m_payload = (char *) malloc (m_payload_len);
 
-	little_to_big_endian(m_payload, m_num_hits, 1);
+	m_payload[0] = m_num_hits;
 
 	// Port
 	memcpy(m_payload+1, &port, 2);
@@ -235,7 +235,7 @@ QueryHit_Payload::QueryHit_Payload(const char * payload, unsigned long payload_l
 	memcpy(m_payload, payload, m_payload_len);
 
 	// Number of Hits
-	big_to_little_endian(&m_num_hits, m_payload, 1);
+	m_num_hits = m_payload[0];
 
 	// Port
 	memcpy(&m_port, m_payload+1, 2);
