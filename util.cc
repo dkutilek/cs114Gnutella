@@ -192,6 +192,10 @@ string type_to_str(header_type type) {
 		return "QUERY";
 	case queryHit:
 		return "QUERYHIT";
+	case httpget:
+		return "HTTPGET";
+	case httpok:
+		return "HTTPOK";
 	case push:
 		return "PUSH";
 	}
