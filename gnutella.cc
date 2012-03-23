@@ -53,7 +53,6 @@ private:
 	unsigned char m_minimumDownloadRate;	// in KB/s
 	string m_sharedDirectoryName;
 	vector<SharedFile> m_fileList;
-	unsigned long m_kilobyteCount;
 	unsigned long m_messageCount;
 	bool m_userNode;
 	bool m_superNode;
@@ -86,6 +85,9 @@ private:
 	// Call this function to read the filenames in the directory
 	// m_sharedDirectoryName into the vector m_fileList
 	void readSharedDirectoryFiles() {
+		unsigned long kilobyteCount = 0;
+		m_fileList.clear();
+
 		DIR *dirp = opendir(m_sharedDirectoryName.c_str());
 		
 		if (dirp == NULL) {
@@ -122,7 +124,7 @@ private:
 				error(oss.str());
 			}
 			else {
-				m_kilobyteCount += buf.st_size / 1000;
+				kilobyteCount += buf.st_size / 1000;
 				SharedFile file(filename, buf.st_size);
 				m_fileList.push_back(file);
 			}
@@ -132,6 +134,9 @@ private:
 			error("Could not close directory");
 			exit(1);
 		}
+
+		m_self.set_numSharedKilobytes(kilobyteCount);
+		m_self.set_numSharedFiles(m_fileList.size());
 	}
 	
 	// Generate a unique message id using the port
@@ -780,7 +785,7 @@ private:
 		DescriptorHeader header(messageId, pong, DEFAULT_TTL,
 								DEFAULT_HOPS, PONG_LEN);
 		Pong_Payload payload(m_self.get_port(), m_self.get_addr(),
-				m_fileList.size(), m_kilobyteCount);
+				m_self.get_numSharedFiles(), m_self.get_numSharedKilobytes());
 
 		sendToPeer(peer, &header, &payload);
 	}
@@ -892,7 +897,6 @@ public:
 
 		m_messageCount = 0;
 		m_userNode = userNode;
-		m_kilobyteCount = 0;
 		
 		// Open the log
 		char str[15];
@@ -903,16 +907,15 @@ public:
 	  		cerr << "Could not open log file: " << strerror(errno) << endl;
 	  		exit(1);
 		}
-		
-		// Get the list of filenames that this node is willing to share
-		readSharedDirectoryFiles();
 
 		// Acquire the listen socket
 		int sock = acquireListenSocket(port);
 
 		// Store this node's information
-		m_self = Peer(inet_addr("127.0.0.1"), htons(port), -1, sock,
-				(unsigned long) m_fileList.size(), m_kilobyteCount);
+		m_self = Peer(inet_addr("127.0.0.1"), htons(port), -1, sock);
+
+		// Get the list of filenames that this node is willing to share
+		readSharedDirectoryFiles();
   	}
 
   	~Gnutella() {
