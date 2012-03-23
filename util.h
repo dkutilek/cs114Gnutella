@@ -22,10 +22,10 @@ private:
 	in_addr_t m_addr;
 	in_port_t m_port;
 	int m_send, m_recv;
-	unsigned long m_numSharedFiles, m_numSharedKilobytes;
+	uint32_t m_numSharedFiles, m_numSharedKilobytes;
 public:
 	Peer(in_addr_t addr, in_port_t port, int send, int recv,
-			unsigned long numSharedFiles, unsigned long numSharedKilobytes);
+			uint32_t numSharedFiles, uint32_t numSharedKilobytes);
 	Peer(in_addr_t addr, in_port_t port, int send, int recv);
 	Peer(in_addr_t addr, in_port_t port);
 	Peer();
@@ -40,15 +40,15 @@ public:
 	void set_port(in_port_t port) {m_port = port;}
 	void set_send(int send) {m_send = send;}
 	void set_recv(int recv) {m_recv = recv;}
-	void set_numSharedFiles(unsigned long x) {m_numSharedFiles = x;}
-	void set_numSharedKilobytes(unsigned long x) {m_numSharedKilobytes = x;}
+	void set_numSharedFiles(uint32_t x) {m_numSharedFiles = x;}
+	void set_numSharedKilobytes(uint32_t x) {m_numSharedKilobytes = x;}
 
 	in_addr_t get_addr() const {return m_addr;}
 	in_port_t get_port() const {return m_port;}
 	int get_send() const {return m_send;}
 	int get_recv() const {return m_recv;}
-	unsigned long get_numSharedFiles() const {return m_numSharedFiles;}
-	unsigned long get_numSharedKilobytes() const {return m_numSharedKilobytes;}
+	uint32_t get_numSharedFiles() const {return m_numSharedFiles;}
+	uint32_t get_numSharedKilobytes() const {return m_numSharedKilobytes;}
 
 	string getServentID();
 };
@@ -59,7 +59,7 @@ class MessageId {
 private:
 	char m_id[MESSAGEID_LEN];
 public:
-	MessageId(Peer& peer, unsigned long * messageCount);
+	MessageId(Peer& peer, uint32_t * messageCount);
 	MessageId(const char * buf);
 	MessageId(const MessageId *messageId);
 	MessageId();
@@ -79,16 +79,6 @@ extern string type_to_str(header_type type);
 
 // Get the time as a string
 string get_time();
-
-// Endian conversions
-void big_to_little_endian(unsigned long * dest, const char * payload,
-		unsigned long len);
-void big_to_little_endian(unsigned short * dest, const char * payload,
-		unsigned long len);
-void little_to_big_endian(char * dest, unsigned long value,
-		unsigned long len);
-void little_to_big_endian(char * dest, unsigned short value,
-		unsigned long len);
 
 /**
  * This class holds information describing a file that the host is sharing.

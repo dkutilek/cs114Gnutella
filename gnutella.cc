@@ -36,14 +36,14 @@
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
-#define DEFAULT_TTL 3
+#define DEFAULT_TTL 4
 #define DEFAULT_HOPS 0
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
 #define HTTP_TIMEOUT 5
 #define PERIODIC_PING 60
-#define BOOT_WAIT 20
+#define BOOT_WAIT 60
 
 using namespace std;
 
@@ -57,7 +57,7 @@ private:
 	string m_sharedDirectoryName;
 	vector<SharedFile> m_fileList;
 	vector<QueryHit_Payload> m_queryHits;
-	unsigned long m_messageCount;
+	uint32_t m_messageCount;
 	bool m_userNode;
 	bool m_superNode;
 	bool m_clientNode;
@@ -87,11 +87,22 @@ private:
 			cout << "[LOG " << get_time() << "] " << msg << endl;
   	}
 
+  	bool ready() {
+  		FILE * f;
+  		f = fopen("done","w");
+  		if (f == NULL) {
+  			error("Couldn't create notify file");
+  			return false;
+  		}
+  		fclose(f);
+  		return true;
+  	}
+
 	// Call this function to read the filenames in the directory
 	// m_sharedDirectoryName into the vector m_fileList
 	void readSharedDirectoryFiles() {
 
-		unsigned long kilobyteCount = 0;
+		uint32_t kilobyteCount = 0;
 		m_fileList.clear();
 		
 		DIR *dirp = opendir(m_sharedDirectoryName.c_str());
@@ -295,16 +306,18 @@ private:
 	 * with it.
 	 */
 	Payload *readDescriptorPayload(Peer peer, DescriptorHeader header) {
-		int payloadSize = header.get_payload_len();
-
-		if (payloadSize < 1) {
-			log("Invalid payload size");
-			return NULL;
-		}
+		uint32_t payloadSize = header.get_payload_len();
 		
 		int bytesAvailable;
 		if (ioctl(peer.get_recv(), FIONREAD, &bytesAvailable) == 0) {
-			if (bytesAvailable < payloadSize) {
+			if (bytesAvailable < 0) {
+				ostringstream oss;
+				oss << "bytesAvailable = " << bytesAvailable << "\n" <<
+						"payloadSize = " << payloadSize << "\n";
+				error(oss.str());
+				return NULL;
+			}
+			else if ((uint32_t) bytesAvailable < payloadSize) {
 				ostringstream oss;
 				oss << "bytesAvailable = " << bytesAvailable << "\n" <<
 						"payloadSize = " << payloadSize << "\n";
@@ -873,8 +886,8 @@ private:
 			error("Empty result set, query did not find file.");
 
 		//currently just choose first result from set
-		unsigned long file_index = resultSet[0].get_file_index();
-		unsigned long file_size = resultSet[0].get_file_size();
+		uint32_t file_index = resultSet[0].get_file_index();
+		uint32_t file_size = resultSet[0].get_file_size();
 		string file_name = resultSet[0].get_file_name();
 
 		//record name of file we are searching for to save
@@ -907,7 +920,7 @@ private:
 	}
 
 	// Send a HTTPok response along same connection that received the HTTPget request
-	void sendHTTPok(int connection, unsigned long file_index)
+	void sendHTTPok(int connection, uint32_t file_index)
 	{
 		unsigned int file_index_int = file_index;
 		int file_size;
@@ -1427,6 +1440,7 @@ public:
   		Peer peer(inet_addr(address), htons(port), s, -1);
 
   		gnutellaConnect(&peer);
+  		ready();
   	}
 
   	/**
@@ -1786,8 +1800,8 @@ int main(int argc, char **argv) {
   else {
 	  node->acceptConnections(BOOT_WAIT);
 	  while (true) {
-		  node->periodicPing();
 	  	  node->acceptConnections(PERIODIC_PING);
+	  	  node->periodicPing();
 	  }
   }
 

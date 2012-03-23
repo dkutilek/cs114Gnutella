@@ -14,7 +14,7 @@
 using namespace std;
 
 Peer::Peer(in_addr_t addr, in_port_t port, int send, int recv,
-		unsigned long numSharedFiles, unsigned long numSharedKilobytes) {
+		uint32_t numSharedFiles, uint32_t numSharedKilobytes) {
 	m_addr = addr;
 	m_port = port;
 	m_send = send;
@@ -102,7 +102,7 @@ string Peer::getServentID() {
 	return ss.str();
 }
 
-MessageId::MessageId(Peer& peer, unsigned long * messageCount) {
+MessageId::MessageId(Peer& peer, uint32_t * messageCount) {
 	(*messageCount)++;
 	memset(m_id, 0, MESSAGEID_LEN);
 	time_t cur = time(NULL);
@@ -117,8 +117,8 @@ MessageId::MessageId(Peer& peer, unsigned long * messageCount) {
 		if (len + sizeof(in_port_t) <= MESSAGEID_LEN) {
 			memcpy(m_id+len, &port, sizeof(in_port_t));
 			len += sizeof(in_port_t);
-			if (len + sizeof(unsigned long) <= MESSAGEID_LEN) {
-				memcpy(m_id+len, messageCount, sizeof(unsigned long));
+			if (len + sizeof(uint32_t) <= MESSAGEID_LEN) {
+				memcpy(m_id+len, messageCount, sizeof(uint32_t));
 			}
 			else {
 				memcpy(m_id+len, messageCount, MESSAGEID_LEN - len);
@@ -212,54 +212,4 @@ string get_time() {
 	strftime(buffer, 80, "%m/%d/%y %H:%M:%S", timeinfo);
 
 	return string(buffer);
-}
-
-void big_to_little_endian(unsigned long * dest, const char * payload,
-		unsigned long len) {
-	unsigned long result = 0;
-	if (len > sizeof (unsigned long))
-		len = sizeof (unsigned long);
-	for (unsigned long i = 0; i < len; i++) {
-		result |= payload[i];
-		if (i != len-1)
-			result <<= CHAR_BIT;
-	}
-	*dest = result;
-}
-
-void big_to_little_endian(unsigned short * dest, const char * payload,
-		unsigned long len) {
-	unsigned short result = 0;
-	if (len > sizeof (unsigned short))
-		len = sizeof (unsigned short);
-	for (unsigned long i = 0; i < len; i++) {
-		result |= payload[i];
-		if (i != len-1)
-			result <<= CHAR_BIT;
-	}
-	*dest = result;
-}
-
-void little_to_big_endian(char * dest, unsigned long value,
-		unsigned long len) {
-	unsigned long i = 0, j = len, bit_mask = 0xFF;
-	if (len > sizeof (unsigned long))
-		len = sizeof (unsigned long);
-	while (i < len) {
-		dest[i] = bit_mask & (value >> (j*CHAR_BIT));
-		i++;
-		j--;
-	}
-}
-
-void little_to_big_endian(char * dest, unsigned short value,
-		unsigned long len) {
-	unsigned long i = 0, j = len, bit_mask = 0xFF;
-	if (len > sizeof (unsigned short))
-		len = sizeof (unsigned short);
-	while (i < len) {
-		dest[i] = bit_mask & (value >> (j*CHAR_BIT));
-		i++;
-		j--;
-	}
 }

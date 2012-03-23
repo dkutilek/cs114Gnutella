@@ -28,14 +28,14 @@ const char *Payload::get_payload() {
 	return m_payload;
 }
 
-unsigned long Payload::get_payload_len() {
+uint32_t Payload::get_payload_len() {
 	return m_payload_len;
 }
 
 /* Pong_Payload methods */
 
 Pong_Payload::Pong_Payload(in_port_t port, in_addr_t ip_addr,
-			unsigned long files_shared, unsigned long kilo_shared)
+			uint32_t files_shared, uint32_t kilo_shared)
 {
 	m_payload_len = PONG_LEN;
 	m_payload = (char *) malloc(PONG_LEN);
@@ -49,11 +49,13 @@ Pong_Payload::Pong_Payload(in_port_t port, in_addr_t ip_addr,
 	m_ip_addr = ip_addr;
 
 	// Number of Shared Files
-	little_to_big_endian(m_payload+6, files_shared, 4);
+	uint32_t network_files_shared = htonl(files_shared);
+	memcpy(m_payload+6, &network_files_shared, 4);
 	m_files_shared = files_shared;
 
 	// Number of Kilobytes Shared
-	little_to_big_endian(m_payload+10, kilo_shared, 4);
+	uint32_t network_kilo_shared = htonl(kilo_shared);
+	memcpy(m_payload+10, &network_kilo_shared, 4);
 	m_kilo_shared = kilo_shared;
 }
 
@@ -69,10 +71,14 @@ Pong_Payload::Pong_Payload(const char * payload) {
 	memcpy(&m_ip_addr, m_payload+2, 4);
 
 	// Number of Shared Files
-	big_to_little_endian(&m_files_shared, m_payload+6, 4);
+	uint32_t network_files_shared;
+	memcpy(&network_files_shared, m_payload+6, 4);
+	m_files_shared = ntohl(network_files_shared);
 
 	// Number of Kilobytes Shared
-	big_to_little_endian(&m_kilo_shared, m_payload+10, 4);
+	uint32_t network_kilo_shared;
+	memcpy(&network_kilo_shared, m_payload+10, 4);
+	m_kilo_shared = ntohl(network_kilo_shared);
 }
 
 in_port_t Pong_Payload::get_port() {
@@ -83,22 +89,23 @@ in_addr_t Pong_Payload::get_ip_addr() {
 	return m_ip_addr;
 }
 
-unsigned long Pong_Payload::get_files_shared() {
+uint32_t Pong_Payload::get_files_shared() {
 	return m_files_shared;
 }
 
-unsigned long Pong_Payload::get_kilo_shared() {
+uint32_t Pong_Payload::get_kilo_shared() {
 	return m_kilo_shared;
 }
 
 /* Query_Payload methods */
 
-Query_Payload::Query_Payload(unsigned short speed, string search) {
+Query_Payload::Query_Payload(uint16_t speed, string search) {
 	m_payload_len = 2 + search.length();
 	m_payload = (char *) malloc(m_payload_len);
 
 	// Minimum Speed
-	little_to_big_endian(m_payload, speed, 2);
+	uint16_t network_speed = htons(speed);
+	memcpy(m_payload, &network_speed, 2);
 	m_speed = speed;
 
 	// Search Criteria
@@ -106,17 +113,19 @@ Query_Payload::Query_Payload(unsigned short speed, string search) {
 	m_search = search;
 }
 
-Query_Payload::Query_Payload(const char * payload, unsigned long payload_len) {
+Query_Payload::Query_Payload(const char * payload, uint32_t payload_len) {
 	m_payload_len = payload_len;
 	m_payload = (char *) malloc(payload_len);
 	memcpy(m_payload, payload, payload_len);
 
 	// Minimum Speed
-	big_to_little_endian(&m_speed, payload, 2);
+	uint16_t network_speed;
+	memcpy(&network_speed, m_payload, 2);
+	m_speed = ntohs(network_speed);
 
 	// Search Criteria
 	m_search = "";
-	for (unsigned long i = 2; i < payload_len && m_payload[i] != 0; i++) {
+	for (uint32_t i = 2; i < payload_len && m_payload[i] != 0; i++) {
 		m_search.push_back(m_payload[i]);
 	}
 }
@@ -131,18 +140,20 @@ string Query_Payload::get_search() {
 
 /* Result methods */
 
-Result::Result(unsigned long file_index, unsigned long file_size,
+Result::Result(uint32_t file_index, uint32_t file_size,
 			string file_name)
 {
 	m_payload_len = 8+file_name.length()+1;
 	m_payload = (char *) malloc(m_payload_len);
 
 	// File Index
-	little_to_big_endian(m_payload, file_index, 4);
+	uint32_t network_file_index = htonl(file_index);
+	memcpy(m_payload, &network_file_index, 4);
 	m_file_index = file_index;
 
 	// File Size
-	little_to_big_endian(m_payload+4, file_size, 4);
+	uint32_t network_file_size = htonl(file_size);
+	memcpy(m_payload+4, &network_file_size, 4);
 	m_file_size = file_size;
 
 	// File Name
@@ -151,29 +162,33 @@ Result::Result(unsigned long file_index, unsigned long file_size,
 	m_file_name = file_name;
 }
 
-Result::Result(const char * result, unsigned long length) {
+Result::Result(const char * result, uint32_t length) {
 	m_payload_len = length;
 	m_payload = (char *) malloc(length);
 	memcpy(m_payload, result, length);
 
 	// File Index
-	big_to_little_endian(&m_file_index, result, 4);
+	uint32_t network_file_index;
+	memcpy(&network_file_index, result, 4);
+	m_file_index = ntohl(network_file_index);
 
 	// File Size
-	big_to_little_endian(&m_file_size, result+4, 4);
+	uint32_t network_file_size;
+	memcpy(&network_file_size, result+4, 4);
+	m_file_size = ntohl(network_file_size);
 
 	// File Name
 	m_file_name = "";
-	for (unsigned long i = 8; i < length && result[i] != 0; i++) {
+	for (uint32_t i = 8; i < length && result[i] != 0; i++) {
 		m_file_name.push_back(result[i]);
 	}
 }
 
-unsigned long const Result::get_file_index() {
+uint32_t const Result::get_file_index() {
 	return m_file_index;
 }
 	
-unsigned long const Result::get_file_size() {
+uint32_t const Result::get_file_size() {
 	return m_file_size;
 }
 
@@ -184,7 +199,7 @@ string const Result::get_file_name() {
 /* QueryHit_Payload methods */
 
 QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
-			unsigned long speed, vector<Result> result_set,
+			uint32_t speed, vector<Result> result_set,
 			const char * servent_id)
 {
 	// Number of Hits
@@ -192,7 +207,7 @@ QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 
 	m_payload_len = 11;
 	
-	for (unsigned short i = 0; i < m_num_hits; i++) {
+	for (uint8_t i = 0; i < m_num_hits; i++) {
 		Result r = result_set.at(i);
 		m_payload_len += r.get_payload_len();
 	}
@@ -211,11 +226,12 @@ QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 	m_ip_addr = ip_addr;
 
 	// Speed
-	little_to_big_endian(m_payload+7, speed, 4);
+	uint32_t network_speed = htonl(speed);
+	memcpy(m_payload+7, &network_speed, 4);
 	m_speed = speed;
 
 	// Result Set
-	unsigned long len = 11;
+	uint32_t len = 11;
 	
 	for (unsigned short i = 0; i < m_num_hits; i++) {
 		Result r = result_set.at(i);
@@ -229,7 +245,7 @@ QueryHit_Payload::QueryHit_Payload(in_port_t port, in_addr_t ip_addr,
 	memcpy(m_servent_id, servent_id, 16);
 }
 
-QueryHit_Payload::QueryHit_Payload(const char * payload, unsigned long payload_len) {
+QueryHit_Payload::QueryHit_Payload(const char * payload, uint32_t payload_len) {
 	m_payload_len = payload_len;
 	m_payload = (char *) malloc (m_payload_len);
 	memcpy(m_payload, payload, m_payload_len);
@@ -244,7 +260,9 @@ QueryHit_Payload::QueryHit_Payload(const char * payload, unsigned long payload_l
 	memcpy(&m_ip_addr, m_payload+3, 4);
 
 	// Speed
-	big_to_little_endian(&m_speed, m_payload+7, 4);
+	uint32_t network_speed;
+	memcpy(&network_speed, m_payload+7, 4);
+	m_speed = ntohl(network_speed);
 
 	// Result Set
 	unsigned short len = 11;
@@ -280,17 +298,17 @@ const char *QueryHit_Payload::get_servent_id() {
 }
 /* HTTPget_Payload method */
 
-HTTPget_Payload::HTTPget_Payload(unsigned long file_index, unsigned long file_size, 
+HTTPget_Payload::HTTPget_Payload(uint32_t file_index, uint32_t file_size,
 								string file_name)	
 {
 	//convert file_index to string
 	char temp_fi[20];
-	sprintf(temp_fi, "%lu", file_index);
+	sprintf(temp_fi, "%u", file_index);
 	string s_file_index = temp_fi;
 
 	//convert file_size to string
 	char temp_fs[20];
-	sprintf(temp_fs, "%lu", file_size);
+	sprintf(temp_fs, "%u", file_size);
 	string s_file_size = temp_fs;
 
 	//Get /get/12345/
@@ -305,7 +323,7 @@ HTTPget_Payload::HTTPget_Payload(unsigned long file_index, unsigned long file_si
 	
 	
 }
-HTTPget_Payload::HTTPget_Payload(const char * payload, unsigned long payload_len) 
+HTTPget_Payload::HTTPget_Payload(const char * payload, uint32_t payload_len)
 {
 	m_payload_len = payload_len;
 	m_payload = (char *) malloc(payload_len);
@@ -314,12 +332,12 @@ HTTPget_Payload::HTTPget_Payload(const char * payload, unsigned long payload_len
 }
 /* HTTPok_Payload method */
 
-HTTPok_Payload::HTTPok_Payload(unsigned long file_size)
+HTTPok_Payload::HTTPok_Payload(uint32_t file_size)
 {
 
 	//convert file_size to string
 	char temp_fs[20];
-	sprintf(temp_fs, "%lu", file_size);
+	sprintf(temp_fs, "%u", file_size);
 	string s_file_size = temp_fs;
 
 	//
@@ -333,7 +351,7 @@ HTTPok_Payload::HTTPok_Payload(unsigned long file_size)
 	strcpy(m_payload, m_response.c_str());
 		
 }
-HTTPok_Payload::HTTPok_Payload(const char * payload, unsigned long payload_len) 
+HTTPok_Payload::HTTPok_Payload(const char * payload, uint32_t payload_len)
 {
 	m_payload_len = payload_len;
 	m_payload = (char *) malloc(payload_len);
@@ -345,7 +363,7 @@ HTTPok_Payload::HTTPok_Payload(const char * payload, unsigned long payload_len)
 
 /* Push_Payload methods */
 
-Push_Payload::Push_Payload(const char * servent_id, unsigned long file_index,
+Push_Payload::Push_Payload(const char * servent_id, uint32_t file_index,
 		in_port_t port, in_addr_t ip_addr)
 {
 	m_payload_len = PUSH_LEN;
@@ -356,7 +374,8 @@ Push_Payload::Push_Payload(const char * servent_id, unsigned long file_index,
 	memcpy(m_servent_id, servent_id, 16);
 
 	// File Index
-	little_to_big_endian(m_payload+16, file_index, 4);
+	uint32_t network_file_index = htonl(file_index);
+	memcpy(m_payload+16, &network_file_index, 4);
 	m_file_index = file_index;
 
 	// IP Address
@@ -376,7 +395,9 @@ Push_Payload::Push_Payload(const char * payload) {
 	memcpy(m_servent_id, m_payload, 16);
 
 	// File Index
-	big_to_little_endian(&m_file_index, m_payload+16, 4);
+	uint32_t network_file_index;
+	memcpy(&network_file_index, m_payload+16, 4);
+	m_file_index = ntohl(network_file_index);
 
 	// IP Address
 	memcpy(&m_ip_addr, m_payload+20, 4);
@@ -389,7 +410,7 @@ const char *Push_Payload::get_servent_id() {
 	return m_servent_id;
 }
 
-unsigned long Push_Payload::get_file_index() {
+uint32_t Push_Payload::get_file_index() {
 	return m_file_index;
 }
 

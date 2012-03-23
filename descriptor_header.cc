@@ -27,7 +27,7 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 		return;
 	}
 
-	unsigned long bit_mask = 0xFF;
+	//unsigned long bit_mask = 0xFF;
 
 	// Message ID
 	m_message_id = MessageId(header);
@@ -68,12 +68,9 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 	m_hops = m_header[18];
 
 	// Payload length
-	m_payload_len = 0;
-	for (int i = 19; i < HEADER_SIZE; i++) {
-		m_payload_len |= bit_mask & m_header[i];
-		if (i != HEADER_SIZE-1)
-			m_payload_len <<= CHAR_BIT;
-	}
+	uint32_t len;
+	memcpy(&len, m_header+19, sizeof(uint32_t));
+	m_payload_len = ntohl(len);
 }
 
 DescriptorHeader::DescriptorHeader(header_type type)
@@ -104,7 +101,7 @@ DescriptorHeader::DescriptorHeader(header_type type)
 
 DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 		unsigned short time_to_live, unsigned short hops,
-		unsigned long payload_len)
+		uint32_t payload_len)
 {
 	unsigned long bit_mask = 0xFF;
 
@@ -150,10 +147,8 @@ DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 	m_header[18] = m_hops;
 
 	// Payload length
-	m_header[19] = bit_mask & (payload_len >> (3*CHAR_BIT));
-	m_header[20] = bit_mask & (payload_len >> (2*CHAR_BIT));
-	m_header[21] = bit_mask & (payload_len >> (1*CHAR_BIT));
-	m_header[22] = bit_mask & (payload_len);
+	uint32_t len = htonl(payload_len);
+	memcpy(m_header+19, &len, sizeof(uint32_t));
 	m_payload_len = payload_len;
 }
 
@@ -197,7 +192,7 @@ unsigned short DescriptorHeader::get_hops() {
 	return m_hops;
 }
 
-unsigned long DescriptorHeader::get_payload_len() {
+uint32_t DescriptorHeader::get_payload_len() {
 	return m_payload_len;
 }
 
