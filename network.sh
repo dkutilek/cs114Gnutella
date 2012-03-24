@@ -111,7 +111,7 @@ while true; do
      let "PORT += 2"
      let "NUMNODES -= 1"
      let "COUNT += 1"
-     while [ "$NUMNODES" != "0" ];
+     while [ "$NUMNODES" != "1" ];
        do
          let "MODCOUNT = COUNT % 2"
          if [ "$MODCOUNT" -eq 0 ]; then
