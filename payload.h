@@ -73,7 +73,7 @@ public:
 
 class QueryHit_Payload : public Payload {
 private:
-	unsigned short m_num_hits;
+	uint8_t m_num_hits;
 	in_port_t m_port;
 	in_addr_t m_ip_addr;
 	uint32_t m_speed;
@@ -83,7 +83,7 @@ public:
 	QueryHit_Payload(in_port_t port, in_addr_t ip_addr, uint32_t speed,
 			vector<Result> result_set, const char *servent_id);
 	QueryHit_Payload(const char *payload, uint32_t payload_len);
-	unsigned short get_num_hits();
+	uint8_t get_num_hits();
 	in_port_t get_port();
 	in_addr_t get_ip_addr();
 	vector<Result> get_result_set();

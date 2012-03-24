@@ -9,6 +9,7 @@
 #include <ctime>
 #include <string.h>
 #include <sstream>
+#include <cstdio>
 #include "util.h"
 #include "hash.h"
 using namespace std;
@@ -198,6 +199,8 @@ string type_to_str(header_type type) {
 		return "HTTPOK";
 	case push:
 		return "PUSH";
+	case none:
+		return "NONE";
 	}
 	return "";
 }
@@ -212,4 +215,17 @@ string get_time() {
 	strftime(buffer, 80, "%m/%d/%y %H:%M:%S", timeinfo);
 
 	return string(buffer);
+}
+
+string byte_array_to_str(const char * array, uint32_t len) {
+	string str;
+	char buf[3];
+	for (uint32_t i = 0; i < len; i++) {
+		sprintf(buf, "%x02", array[i]);
+		str.push_back(buf[1]);
+		str.push_back(buf[0]);
+		if (i+1 != len)
+			str.push_back(' ');
+	}
+	return str;
 }

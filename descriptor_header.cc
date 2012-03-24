@@ -57,8 +57,8 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 		m_type = httpok;
 		break;
 	default:
-
-		break;
+		m_type = none;
+		return;
 	}
 
 	// Time to Live

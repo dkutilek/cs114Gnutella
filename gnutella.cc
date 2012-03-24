@@ -296,7 +296,7 @@ private:
 			remaining -= bytesRead;
 		}
 		buffer[HEADER_SIZE+1] = 0;
-		
+
 		return new DescriptorHeader(buffer);
 	}
 	
@@ -1140,7 +1140,15 @@ public:
 			return;
 		}
 
+		if (header->get_header_type() == none) {
+			ostringstream oss;
+			oss << "Invalid header from " << ntohs(peer.get_port());
+			log(oss.str());
+			return;
+		}
+
 		if (header->get_header_type() != con && header->get_time_to_live() == 0) {
+			log("TLL == 0");
 			return;
 		}
 
@@ -1183,6 +1191,9 @@ public:
 			break;
 		case httpok:
 			// do nothing, an existing peer should not be sending this message.
+			break;
+		case none:
+			// do nothing
 			break;
 		}
 
