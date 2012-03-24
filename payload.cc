@@ -140,26 +140,25 @@ string Query_Payload::get_search() {
 
 /* Result methods */
 
-Result::Result(uint32_t file_index, uint32_t file_size,
-			string file_name)
+Result::Result(SharedFile& file)
 {
-	m_payload_len = 8+file_name.length()+2;
+	m_payload_len = 8+file.getFileName().length()+2;
 	m_payload = (char *) malloc(m_payload_len);
 
 	// File Index
-	uint32_t network_file_index = htonl(file_index);
+	uint32_t network_file_index = htonl(file.getFileIndex());
 	memcpy(m_payload, &network_file_index, 4);
-	m_file_index = file_index;
+	m_file_index = file.getFileIndex();
 
 	// File Size
-	uint32_t network_file_size = htonl(file_size);
+	uint32_t network_file_size = htonl(file.getBytes());
 	memcpy(m_payload+4, &network_file_size, 4);
-	m_file_size = file_size;
+	m_file_size = file.getBytes();
 
 	// File Name
-	strcpy(m_payload+8, file_name.c_str());
+	strcpy(m_payload+8, file.getFileName().c_str());
 	m_payload[m_payload_len] = 0;
-	m_file_name = file_name;
+	m_file_name = file.getFileName();
 }
 
 Result::Result(const char * result, uint32_t length) {

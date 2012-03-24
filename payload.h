@@ -56,14 +56,15 @@ public:
 	string get_search();
 };
 
+class SharedFile;
+
 class Result : public Payload {
 private:
 	uint32_t m_file_index;
 	uint32_t m_file_size;
 	string m_file_name;
 public:
-	Result(uint32_t file_index, uint32_t file_size,
-			string m_file_name);
+	Result(SharedFile& file);
 	Result(const char *result, uint32_t length);
 
 	uint32_t const get_file_index();

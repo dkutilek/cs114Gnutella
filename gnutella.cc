@@ -574,8 +574,7 @@ private:
 				file != m_fileList.end(); file++)
 		{
 			if (file->getFileName() == searchCriteria) {
-				Result result(file->getFileIndex(), file->getBytes(),
-						file->getFileName());
+				Result result(*file);
 				hits.push_back(result);
 			}
 		}

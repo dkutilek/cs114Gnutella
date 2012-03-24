@@ -88,21 +88,28 @@ string byte_array_to_str(const char * array, uint32_t len);
 class SharedFile {
 private:
 	string m_filename;
-	unsigned int m_bytes;
-	unsigned int m_index;	// An identifier for this file
+	uint32_t m_bytes;
+	uint32_t m_index;	// An identifier for this file
 public:
-	SharedFile(string filename, unsigned int bytes) {
+	SharedFile(string filename, uint32_t bytes) {
 		m_filename = filename;
 		m_bytes = bytes;
 	}
 
-	void setFilePath(string filename) { m_filename = filename; }
-	void setBytes(unsigned int bytes) { m_bytes = bytes; }
-	void setFileIndex(unsigned int index) { m_index = index; }
+	SharedFile& operator=(const SharedFile & rhs) {
+		this->m_filename = rhs.m_filename;
+		this->m_bytes = rhs.m_bytes;
+		this->m_index = rhs.m_index;
+		return *this;
+	}
 
-	unsigned int getFileIndex() { return m_index; }
+	void setFilePath(string filename) { m_filename = filename; }
+	void setBytes(uint32_t bytes) { m_bytes = bytes; }
+	void setFileIndex(uint32_t index) { m_index = index; }
+
+	uint32_t getFileIndex() { return m_index; }
 	string getFileName() { return m_filename; }
-	unsigned int getBytes() { return m_bytes; }
+	uint32_t getBytes() { return m_bytes; }
 };
 
 #endif /* UTIL_H_ */
