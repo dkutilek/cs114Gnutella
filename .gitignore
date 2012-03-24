@@ -5,7 +5,8 @@
 .cproject
 .settings
 # Ignore log directory
+logs/*
 # Ignore built executable
 gnutella
 # Ignore share directory
-#share/*
+share/*
