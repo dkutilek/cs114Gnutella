@@ -72,7 +72,7 @@ while true; do
      let "COUNT += 1"
      while [ "$NUMNODES" != "0" ];
        do
-         let "MODCOUNT = COUNT % 2"
+         let "MODCOUNT = COUNT % 4"
          if [ "$MODCOUNT" -eq 0 ]; then
            let "BOOTPORT += 2"
          fi

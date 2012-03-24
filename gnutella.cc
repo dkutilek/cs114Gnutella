@@ -89,6 +89,18 @@ private:
 			cout << "[LOG " << get_time() << "] " << msg << endl;
   	}
 
+
+	bool ready() {
+		FILE * f;
+		f = fopen("done","w");
+		if (f == NULL) {
+			error("Couldn't create notify file");
+			return false;
+		}
+		fclose(f);
+		return true;
+	}
+
 	// Call this function to read the filenames in the directory
 	// m_sharedDirectoryName into the vector m_fileList
 	void readSharedDirectoryFiles() {
@@ -1490,6 +1502,7 @@ public:
   		Peer peer(inet_addr(address), htons(port), s, -1);
 
   		gnutellaConnect(&peer);
+  		ready();
   	}
 
   	/**
@@ -1849,8 +1862,8 @@ int main(int argc, char **argv) {
   else {
 	  node->acceptConnections(BOOT_WAIT);
 	  while (true) {
+		  node->acceptConnections(PERIODIC_PING);
 		  node->periodicPing();
-	  	  node->acceptConnections(PERIODIC_PING);
 	  }
   }
 
