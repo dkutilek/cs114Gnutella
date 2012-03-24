@@ -71,7 +71,7 @@ public:
 };
 
 enum header_type {
-	con, resp, ping, pong, query, queryHit, push, httpget, httpok	//added httpget and httpok types -DG-
+	con, resp, ping, pong, query, queryHit, push, httpget, httpok, none	//added httpget and httpok types -DG-
 };
 
 // Convert header_type to a string
@@ -79,6 +79,8 @@ extern string type_to_str(header_type type);
 
 // Get the time as a string
 string get_time();
+
+string byte_array_to_str(const char * array, uint32_t len);
 
 /**
  * This class holds information describing a file that the host is sharing.

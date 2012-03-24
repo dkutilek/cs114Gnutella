@@ -100,7 +100,7 @@ uint32_t Pong_Payload::get_kilo_shared() {
 /* Query_Payload methods */
 
 Query_Payload::Query_Payload(uint16_t speed, string search) {
-	m_payload_len = 2 + search.length();
+	m_payload_len = 2 + search.length() + 1;
 	m_payload = (char *) malloc(m_payload_len);
 
 	// Minimum Speed
@@ -143,7 +143,7 @@ string Query_Payload::get_search() {
 Result::Result(uint32_t file_index, uint32_t file_size,
 			string file_name)
 {
-	m_payload_len = 8+file_name.length()+1;
+	m_payload_len = 8+file_name.length()+2;
 	m_payload = (char *) malloc(m_payload_len);
 
 	// File Index
@@ -265,9 +265,9 @@ QueryHit_Payload::QueryHit_Payload(const char * payload, uint32_t payload_len) {
 	m_speed = ntohl(network_speed);
 
 	// Result Set
-	unsigned short len = 11;
+	uint8_t len = 11;
 	
-	for (unsigned short i = 0; i < m_num_hits && len < m_payload_len-16; i++) {
+	for (uint8_t i = 0; i < m_num_hits && len < m_payload_len-16; i++) {
 		Result r(m_payload+len, m_payload_len-len-16);
 		m_result_set.push_back(r);
 		len += r.get_payload_len();
@@ -277,7 +277,7 @@ QueryHit_Payload::QueryHit_Payload(const char * payload, uint32_t payload_len) {
 	memcpy(m_servent_id, m_payload+len, 16);
 }
 
-unsigned short QueryHit_Payload::get_num_hits() {
+uint8_t QueryHit_Payload::get_num_hits() {
 	return m_num_hits;
 }
 
