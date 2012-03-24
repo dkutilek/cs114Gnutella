@@ -325,11 +325,6 @@ private:
 		}
 		buffer[HEADER_SIZE+1] = 0;
 
-		ostringstream oss;
-		oss << "\nHeader:  " << byte_array_to_str(buffer, HEADER_SIZE)
-				<< "\nFrom: " << ntohs(peer.get_port());
-		log(oss.str());
-
 		return new DescriptorHeader(buffer);
 	}
 	
@@ -389,10 +384,6 @@ private:
 		}
 
 		Payload *payload;
-
-		ostringstream oss;
-		oss << "\nPayload: " << byte_array_to_str(buffer, payloadSize);
-		log(oss.str());
 
 		switch (header.get_header_type()) {
 		case ping:
@@ -1056,7 +1047,7 @@ private:
 
 	    // copy the file into the buffer:
 	    result = fread (buffer,1,lSize,pFile);
-	    if (result != lSize) {fputs ("Reading error",stderr); exit (3);}
+	    if (result != (size_t) lSize) {fputs ("Reading error",stderr); exit (3);}
 
 	    /* the whole file is now loaded in the memory buffer. */
 
@@ -1119,16 +1110,6 @@ private:
 			memcpy(buff+HEADER_SIZE, payload->get_payload(),
 					header->get_payload_len());
 		buff[len] = 0;
-
-		ostringstream tmp;
-		tmp << "\nHeader:  "
-				<< byte_array_to_str(header->get_header(), HEADER_SIZE);
-		if (payload != NULL) {
-			tmp << "\nPayload: "
-					<< byte_array_to_str(payload->get_payload(),
-							header->get_payload_len());
-		}
-		log(tmp.str());
 
 		// Send all at once
 		int status = send(peer.get_send(), buff, len, 0);
