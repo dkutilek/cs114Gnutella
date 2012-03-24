@@ -50,7 +50,7 @@ DescriptorHeader::DescriptorHeader(const char *header) {
 		m_type = push;
 		break;
 	//adding new payload ids for httpget and httpok -DG-
-	case (char) 0x10:
+	case (char) 0x12:
 		m_type = httpget;
 		break;
 	case (char) 0x11:
@@ -129,7 +129,7 @@ DescriptorHeader::DescriptorHeader(MessageId &message_id, header_type type,
 		break;
 	// adding new cases for httpget and httpok -DG-
 	case httpget:
-		m_header[16] = 16;
+		m_header[16] = 18;
 		break;
 	case httpok:
 		m_header[16] = 17;
@@ -197,14 +197,18 @@ uint32_t DescriptorHeader::get_payload_len() {
 }
 
 in_port_t DescriptorHeader::get_port() {
-	if (m_type == con)
+	if (m_type == con || 
+		m_type == httpget || 
+		m_type == httpok)
 		return m_port;
 	else
 		return 0;
 }
 
 in_addr_t DescriptorHeader::get_addr() {
-	if (m_type == con)
+	if (m_type == con || 
+		m_type == httpget || 
+		m_type == httpok)
 		return m_addr;
 	else
 		return 0;
