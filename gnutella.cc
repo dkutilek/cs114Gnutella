@@ -29,20 +29,20 @@
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
-#define MAX_PEERS 7
+#define MAX_PEERS 4
 #define MAX_PING_STORAGE 32
 #define MAX_QUERY_STORAGE 32
 #define MAX_QUERY_HIT_STORAGE 32
 #define DEFAULT_MAX_UPLOAD_RATE 10
 #define DEFAULT_MIN_DOWNLOAD_RATE 10
 #define DEFAULT_SHARE_DIRECTORY "./share"
-#define DEFAULT_TTL 4
+#define DEFAULT_TTL 3
 #define DEFAULT_HOPS 0
 #define PING_TIMEOUT 5
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
-#define HTTP_TIMEOUT 5
-#define BOOT_WAIT 60
+#define PUSH_TIMEOUT 5
+#define BOOT_WAIT 120
 #define PERIODIC_PING 20
 
 using namespace std;
@@ -57,6 +57,8 @@ private:
 	string m_sharedDirectoryName;
 	vector<SharedFile> m_fileList;
 	vector<QueryHit_Payload> m_queryHits;
+	vector<MessageId> m_queryHitIds;
+	vector<Peer> m_queryHitPeers;
 	uint32_t m_messageCount;
 	bool m_userNode;
 	bool m_superNode;
@@ -99,6 +101,30 @@ private:
 		}
 		fclose(f);
 		return true;
+	}
+
+	void removePeer(Peer peer) {
+		close(peer.get_recv());
+		close(peer.get_send());
+		m_peers.erase(peer);
+		m_sentPingMap.erase(peer);
+		m_sentQueryMap.erase(peer);
+		m_sentQueryHitMap.erase(peer);
+
+		vector<Peer>::iterator p = m_queryHitPeers.begin();
+		vector<QueryHit_Payload>::iterator qh = m_queryHits.begin();
+		vector<MessageId>::iterator id = m_queryHitIds.begin();
+		while (p != m_queryHitPeers.end()) {
+			if (*p == peer) {
+				m_queryHits.erase(qh);
+				m_queryHitIds.erase(id);
+				m_queryHitPeers.erase(p);
+				return;
+			}
+			p++;
+			qh++;
+			id++;
+		}
 	}
 
 	// Call this function to read the filenames in the directory
@@ -329,9 +355,7 @@ private:
 					" closed the connection.";
 			log(oss.str());
 
-			close(peer.get_recv());
-			close(peer.get_send());
-			m_peers.erase(peer);
+			removePeer(peer);
 			return NULL;
 		}
 
@@ -728,17 +752,13 @@ private:
 					// Clear out old values
 					while(m_queryHits.size() > MAX_QUERY_STORAGE) {
 						m_queryHits.erase(m_queryHits.begin());
+						m_queryHitIds.erase(m_queryHitIds.begin());
+						m_queryHitPeers.erase(m_queryHitPeers.begin());
 					}
 					// Add the QUERYHIT to the QUERYHIT vector
 					m_queryHits.push_back(*payload);
-
-					//QueryHit needs to prompt user to ask to do
-					// direct download (call sendHTTPget) OR
-					// Push along same path
-
-					DescriptorHeader p(header->get_message_id(),
-							push, DEFAULT_TTL, DEFAULT_HOPS, 0);
-					sendToPeer(peer, &p, NULL);
+					m_queryHitIds.push_back(header->get_message_id());
+					m_queryHitPeers.push_back(peer);
 				}
 				// If not send it along
 				else {
@@ -811,8 +831,8 @@ private:
 		Push_Payload *payload = (Push_Payload *)
 				readDescriptorPayload(peer, *header);
 
-		//if (payload == NULL)
-		//	return;
+		if (payload == NULL)
+			return;
 
 		// Check if we need to pass this QUERYHIT along
 		map<Peer, map<MessageId, Peer> >::iterator x =
@@ -917,6 +937,15 @@ private:
 				payload.get_payload_len());
 
 		sendToPeer(peer, &header, &payload);
+	}
+
+	void sendPush(Peer peer, QueryHit_Payload payload, Result result, MessageId messageId) {
+		Push_Payload p(payload.get_servent_id(), result.get_file_index(),
+				payload.get_port(), payload.get_ip_addr());
+		DescriptorHeader d(messageId, push, DEFAULT_TTL, DEFAULT_HOPS,
+				p.get_payload_len());
+
+		sendToPeer(peer, &d, &p);
 	}
 
 	// Send a PONG to a given peer
@@ -1088,6 +1117,7 @@ private:
 					<< type_to_str(header->get_header_type()) <<
 					" request to peer at " << ntohs(peer.get_port());
 			error(logoss.str());
+			removePeer(peer);
 			return;
 		}
 		delete[] buff;
@@ -1195,11 +1225,11 @@ public:
 			ostringstream oss;
 			oss << "Invalid header from " << ntohs(peer.get_port());
 			log(oss.str());
+			removePeer(peer);
 			return;
 		}
 
 		if (header->get_header_type() != con && header->get_time_to_live() == 0) {
-			log("TLL == 0");
 			return;
 		}
 
@@ -1313,9 +1343,7 @@ public:
   		  					}
   		  					// Else the peer is known, update it
   		  					else if (setIter != m_peers.end()) {
-  		  						close(setIter->get_recv());
-  		  						close(setIter->get_send());
-  		  						m_peers.erase(setIter);
+  		  						removePeer(*setIter);
   		  						int s = acquireSendSocket();
   		  						peer.set_send(s);
 
@@ -1417,9 +1445,7 @@ public:
 											" closed the connection.";
 									log(oss.str());
 
-									close(iter->get_recv());
-									close(iter->get_send());
-									m_peers.erase(iter);
+									removePeer(*iter);
 								}
 								else if (bytesAvailable >= HEADER_SIZE) {
 									handleRequest(*iter);
@@ -1433,9 +1459,7 @@ public:
 										" closed the connection.";
 								log(oss.str());
 
-								close(iter->get_recv());
-								close(iter->get_send());
-								m_peers.erase(iter);
+								removePeer(*iter);
   							}
   						}
   						i++;
@@ -1682,7 +1706,7 @@ PING.\nFor all peers input \"all\"\n";
 					}
 					i++;
 				}
-				cout << "Select the file you wish to download using this \
+				cout << "Select the file you wish to PUSH using this \
 format: <peer #>.<file #>\n";
 				while (true) {
 					cout << "#? ";
@@ -1697,11 +1721,10 @@ format: <peer #>.<file #>\n";
 							vector<Result> results = payload.get_result_set();
 							if (file_num > 0 &&
 									(size_t) file_num <= results.size()) {
-								vector<Result> file;
-								file.push_back(results.at(file_num-1));
-								sendHTTPget(payload.get_port(),
-										payload.get_ip_addr(), file);
-								acceptConnections(HTTP_TIMEOUT);
+								sendPush(m_queryHitPeers.at(peer_num-1),
+										payload, results.at(file_num-1),
+										m_queryHitIds.at(peer_num-1));
+								acceptConnections(PUSH_TIMEOUT);
 								break;
 							}
 							else {

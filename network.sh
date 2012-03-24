@@ -31,8 +31,8 @@ while true; do
     X=1
     for i in $OPTIONS; do
       # Display "User Controlled Node" instead of just "User"
-      if [ "$i" = "User" ]; then
-        i="User Controlled Node"
+      if [ "$i" = "Build" ]; then
+        i="Build network and enter user node"
       fi
       echo "$X) $i"
       let "X += 1"
@@ -72,7 +72,7 @@ while true; do
      let "COUNT += 1"
      while [ "$NUMNODES" != "0" ];
        do
-         let "MODCOUNT = COUNT % 4"
+         let "MODCOUNT = COUNT % 3"
          if [ "$MODCOUNT" -eq 0 ]; then
            let "BOOTPORT += 2"
          fi
@@ -90,8 +90,9 @@ while true; do
          let "COUNT += 1"
      done
      echo `ps -e | grep gnutella | awk '{print $1}'`
-     OPTIONS="Destroy User Exit"
-     echo "Network built!"
+     OPTIONS="Destroy Exit"
+     echo "Network built, entering user node!"
+     ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -u
 
     # Destroy network and remove query option
     elif [ "$opt" = "Destroy" ]; then
@@ -109,12 +110,6 @@ while true; do
      NUMNODES=$1
      MODCOUNT=0
      echo "Network destroyed!"
-
-    # Start user control Gnutella node
-    elif [ "$opt" = "User" ]; then
-      USERBOOTPORT=$PORT
-      let "USERBOOTPORT -= 2"
-      ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -u
 
     # Exit script
     elif [ "$opt" = "Exit" ]; then
