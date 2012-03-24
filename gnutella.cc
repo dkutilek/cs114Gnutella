@@ -29,7 +29,7 @@
 
 #define DEFAULT_PORT 11111
 #define BUFFER_SIZE 1024
-#define MAX_PEERS 4
+#define MAX_PEERS 7
 #define MAX_PING_STORAGE 32
 #define MAX_QUERY_STORAGE 32
 #define MAX_QUERY_HIT_STORAGE 32
@@ -42,8 +42,7 @@
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
 #define HTTP_TIMEOUT 5
-#define PERIODIC_PING 60
-#define BOOT_WAIT 60
+#define PERIODIC_PING 20
 
 using namespace std;
 
@@ -72,6 +71,8 @@ private:
 	// ID to a peer who forwarded us the QUERY.  Built when handling QUERY,
 	// used when handling QUERYHIT.
 	map<Peer,map<MessageId,Peer> > m_sentQueryMap;
+
+	map<Peer,map<MessageId,Peer> > m_sentQueryHitMap;
   
 	void error(string msg) {
 		m_log << "[ERR " << get_time() << "] " << msg << ": "
@@ -87,22 +88,11 @@ private:
 			cout << "[LOG " << get_time() << "] " << msg << endl;
   	}
 
-  	bool ready() {
-  		FILE * f;
-  		f = fopen("done","w");
-  		if (f == NULL) {
-  			error("Couldn't create notify file");
-  			return false;
-  		}
-  		fclose(f);
-  		return true;
-  	}
-
 	// Call this function to read the filenames in the directory
 	// m_sharedDirectoryName into the vector m_fileList
 	void readSharedDirectoryFiles() {
 
-		uint32_t kilobyteCount = 0;
+		unsigned long kilobyteCount = 0;
 		m_fileList.clear();
 		
 		DIR *dirp = opendir(m_sharedDirectoryName.c_str());
@@ -145,16 +135,15 @@ private:
 			fseek (p_File , 0 , SEEK_END);
 			l_Size = ftell (p_File);
 			rewind (p_File);
-			
-			
-			if (l_Size == 0) {
+			struct stat buf;
+			if (stat(path.c_str(), & buf) == -1) {
 				ostringstream oss;
 				oss << "Failed to get file size of " << filename;
 				error(oss.str());
 			}
 			else {
-				kilobyteCount += (l_Size * 1000);
-				SharedFile file(filename, l_Size);
+				kilobyteCount += buf.st_size / 1000;
+				SharedFile file(filename, buf.st_size);
 				m_fileList.push_back(file);
 			}
 		}
@@ -306,22 +295,17 @@ private:
 	 * with it.
 	 */
 	Payload *readDescriptorPayload(Peer peer, DescriptorHeader header) {
-		uint32_t payloadSize = header.get_payload_len();
+		int payloadSize = header.get_payload_len();
+
+		if (payloadSize < 1) {
+			log("Invalid payload size");
+			return NULL;
+		}
 		
 		int bytesAvailable;
 		if (ioctl(peer.get_recv(), FIONREAD, &bytesAvailable) == 0) {
-			if (bytesAvailable < 0) {
-				ostringstream oss;
-				oss << "bytesAvailable = " << bytesAvailable << "\n" <<
-						"payloadSize = " << payloadSize << "\n";
-				error(oss.str());
-				return NULL;
-			}
-			else if ((uint32_t) bytesAvailable < payloadSize) {
-				ostringstream oss;
-				oss << "bytesAvailable = " << bytesAvailable << "\n" <<
-						"payloadSize = " << payloadSize << "\n";
-				error(oss.str());
+			if (bytesAvailable < payloadSize) {
+				log("bytesAvailable < payloadSize");
 				return NULL;
 			}
 		}
@@ -690,9 +674,37 @@ private:
 		if (payload == NULL)
 			return;
 
-		// Check if we need to pass this QUERYHIT along
+		// Build the QUERYHIT map for PUSH
 		map<Peer, map<MessageId, Peer> >::iterator x =
-				m_sentQueryMap.begin();
+				m_sentQueryHitMap.find(peer);
+
+		// If there isn't a map from the message id to a peer already
+		// associated with this peer
+		if (x != m_sentQueryHitMap.end()) {
+			map<MessageId,Peer>::iterator y =
+					x->second.find(header->get_message_id());
+
+			if (y == x->second.end()) {
+				// Clear out old QUERYHITs
+				while(x->second.size() >= MAX_QUERY_STORAGE) {
+					x->second.erase(x->second.begin());
+				}
+
+				x->second.insert(pair<MessageId,Peer>
+						(header->get_message_id(),peer));
+			}
+		}
+		// There wasn't a map for this peer at all
+		else {
+			map<MessageId,Peer> idToPeer;
+			idToPeer.insert(pair<MessageId,Peer>
+						(header->get_message_id(),peer));
+			m_sentQueryHitMap.insert(pair<Peer,map<MessageId,Peer> >
+										(peer,idToPeer));
+		}
+
+		// Check if we need to pass this QUERYHIT along
+		x = m_sentQueryMap.begin();
 
 		if (x != m_sentQueryMap.end()) {
 			map<MessageId, Peer>::iterator y =
@@ -711,6 +723,10 @@ private:
 					//QueryHit needs to prompt user to ask to do
 					// direct download (call sendHTTPget) OR
 					// Push along same path
+
+					DescriptorHeader p(header->get_message_id(),
+							push, DEFAULT_TTL, DEFAULT_HOPS, 0);
+					sendToPeer(peer, &p, NULL);
 				}
 				// If not send it along
 				else {
@@ -783,10 +799,33 @@ private:
 		Push_Payload *payload = (Push_Payload *)
 				readDescriptorPayload(peer, *header);
 
-		if (payload == NULL)
-			return;
+		//if (payload == NULL)
+		//	return;
 
-		// Do things with the PUSH
+		// Check if we need to pass this QUERYHIT along
+		map<Peer, map<MessageId, Peer> >::iterator x =
+				m_sentQueryHitMap.begin();
+
+		if (x != m_sentQueryHitMap.end()) {
+			map<MessageId, Peer>::iterator y =
+					x->second.find(header->get_message_id());
+
+			if (y != x->second.end()) {
+				// We might be the actual target
+				if (y->second == m_self) {
+						// Do something
+				}
+				// If not send it along
+				else {
+					DescriptorHeader d(header->get_message_id(),
+							header->get_header_type(),
+							header->get_time_to_live() - 1,
+							header->get_hops() + 1,
+							header->get_payload_len());
+					sendToPeer(y->second, &d, payload);
+				}
+			}
+		}
 
 		delete payload;
 	}
@@ -886,8 +925,8 @@ private:
 			error("Empty result set, query did not find file.");
 
 		//currently just choose first result from set
-		uint32_t file_index = resultSet[0].get_file_index();
-		uint32_t file_size = resultSet[0].get_file_size();
+		unsigned long file_index = resultSet[0].get_file_index();
+		unsigned long file_size = resultSet[0].get_file_size();
 		string file_name = resultSet[0].get_file_name();
 
 		//record name of file we are searching for to save
@@ -920,7 +959,7 @@ private:
 	}
 
 	// Send a HTTPok response along same connection that received the HTTPget request
-	void sendHTTPok(int connection, uint32_t file_index)
+	void sendHTTPok(int connection, unsigned long file_index)
 	{
 		unsigned int file_index_int = file_index;
 		int file_size;
@@ -1173,7 +1212,7 @@ public:
 		case push:
 			oss << "Received PUSH from peer at " << ntohs(peer.get_port());
 			log(oss.str());
-			//handlePush(connection, header,remoteInfo.sin_addr, remoteInfo.sin_port);
+			handlePush(header, peer);
 			break;
 		case resp:
 			// Do nothing
@@ -1209,7 +1248,7 @@ public:
   				// Check to make sure we won't block on the connection
   				int bytesAvailable;
   				if (ioctl(connection, FIONREAD, &bytesAvailable) == 0) {
-  					if (bytesAvailable == HEADER_SIZE) {
+  					if (bytesAvailable >= HEADER_SIZE) {
   		  				Peer peer(remoteInfo.sin_addr.s_addr,
   		  						remoteInfo.sin_port);
   		  				peer.set_recv(connection);
@@ -1440,7 +1479,6 @@ public:
   		Peer peer(inet_addr(address), htons(port), s, -1);
 
   		gnutellaConnect(&peer);
-  		ready();
   	}
 
   	/**
@@ -1798,10 +1836,9 @@ int main(int argc, char **argv) {
 	  }
   }
   else {
-	  node->acceptConnections(BOOT_WAIT);
 	  while (true) {
+		  node->periodicPing();
 	  	  node->acceptConnections(PERIODIC_PING);
-	  	  node->periodicPing();
 	  }
   }
 
