@@ -12,14 +12,51 @@ if [ "$1" -lt 0 ]; then
  exit
 fi
 
-# Port value check
+DELAY=0
+CLIENT=0
 FIRSTPORT="11111"
+FIRSTPORTSET=0
 if [ -n "$2" ]; then
-  if [ "$2" -lt 0 ]; then
-    echo "<port> must be positive, using default port 11111"
+ if [ "$2" = "-d" ]; then
+   DELAY=1
+ elif [ "$2" = "-c" ]; then
+  CLIENT=1
+ elif [ "$2" -lt 0 ]; then
+   echo "<port> must be positive, using default port 11111"
+ else
+   FIRSTPORT=$2
+   FIRSTPORTSET=1
+ fi
+fi
+
+if [ -n "$3" ]; then
+ if [ "$3" = "-d" ]; then
+   DELAY=1
+ elif [ "$3" = "-c" ]; then
+   CLIENT=1
+ elif [ "$FIRSTPORTSET" -eq 0 ]; then
+  if [ "$3" -lt 0 ]; then
+   echo "<port> must be positive, using default port 11111"
   else
-    FIRSTPORT=$2
+   FIRSTPORT=$3
+   FIRSTPORTSET=1
   fi
+ fi
+fi
+
+if [ -n "$4" ]; then
+ if [ "$4" = "-d" ]; then
+   DELAY=1
+ elif [ "$4" = "-c" ]; then
+   CLIENT=1
+ elif [ "$FIRSTPORTSET" -eq 0 ]; then
+  if [ "$4" -lt 0 ]; then
+   echo "<port> must be positive, using default port 11111"
+  else
+   FIRSTPORT=$4
+   FIRSTPORTSET=1
+  fi
+ fi
 fi
 
 rm -f "done"
@@ -65,18 +102,42 @@ while true; do
      MODCOUNT=0
      BOOTPORT=$PORT
      rm -f "done"
-     ./gnutella --listen=$PORT &
+     if [ "$CLIENT" -eq 1 ]; then
+       ./gnutella --listen=$PORT -c &
+     else
+       ./gnutella --listen=$PORT &
+     fi
      sleep 2
      let "PORT += 2"
      let "NUMNODES -= 1"
      let "COUNT += 1"
      while [ "$NUMNODES" != "0" ];
        do
-         let "MODCOUNT = COUNT % 3"
+         let "MODCOUNT = COUNT % 2"
          if [ "$MODCOUNT" -eq 0 ]; then
            let "BOOTPORT += 2"
          fi
-         ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT &
+         if [ "$DELAY" -eq 1 ]; then
+           if [ "$MODCOUNT" -eq 1 ]; then
+             if [ "$CLIENT" -eq 1 ]; then
+               ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -c &
+             else
+               ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT &
+             fi
+           else
+             if [ "$CLIENT" -eq 1 ]; then
+               ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -d -c &
+             else
+               ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -d &
+             fi
+           fi
+         else
+           if [ "$CLIENT" -eq 1 ]; then
+             ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT -c &
+           else
+             ./gnutella --listen=$PORT --bootstrap=127.0.0.1:$BOOTPORT &
+           fi
+         fi
          DONEGREP=`ls | grep "done"`
          echo `ls | grep "done"`
          while [ "$DONEGREP" != "done" ];

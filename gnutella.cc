@@ -44,6 +44,7 @@
 #define PUSH_TIMEOUT 5
 #define BOOT_WAIT 120
 #define PERIODIC_PING 20
+#define DELAY_TIME 2
 
 using namespace std;
 
@@ -63,6 +64,7 @@ private:
 	bool m_userNode;
 	bool m_superNode;
 	bool m_clientNode;
+	bool m_delay;
 	string m_searching_for_file_name;
 
 	// Map from a peer that we forwarded a PING to, to a map from a descriptor
@@ -1155,7 +1157,7 @@ private:
 public:
   	Gnutella(int port = DEFAULT_PORT, bool userNode = false,
   			bool clientNode = false, bool superNode = false,
-  			const char *shareDirectory = NULL)
+  			bool delay = false, const char *shareDirectory = NULL)
   	{
   		if (shareDirectory == NULL) {
   			stringstream ss;
@@ -1168,6 +1170,7 @@ public:
 
 		m_messageCount = 0;
 		m_userNode = userNode;
+		m_delay = delay;
 
 		
 		// Open the log
@@ -1229,6 +1232,11 @@ public:
 			log(oss.str());
 			removePeer(peer);
 			return;
+		}
+
+		if (m_delay) {
+			time_t starttime = time(NULL);
+			while (difftime(time(NULL), starttime) > DELAY_TIME){}
 		}
 
 		ostringstream oss;
@@ -1775,9 +1783,10 @@ int main(int argc, char **argv) {
   bool userNode = false;
   bool superNode = false;
   bool clientNode = false;
+  bool delay = false;
   string sharedDirectory = "";
 
-  const char *optString = "usc";
+  const char *optString = "uscd";
 
   const struct option longOpts[] = {
 		  {"listen", required_argument, NULL, 0},
@@ -1808,6 +1817,9 @@ int main(int argc, char **argv) {
 		  }
 
 		  clientNode = true;
+		  break;
+	  case 'd':
+		  delay = true;
 		  break;
 	  case 0:
 		  if (strcmp("listen", longOpts[longIndex].name) == 0) {
@@ -1858,11 +1870,12 @@ int main(int argc, char **argv) {
 
   Gnutella *node;
   if (sharedDirectory == "") {
-	  node = new Gnutella(listeningPort, userNode, clientNode, superNode, NULL);
+	  node = new Gnutella(listeningPort, userNode, clientNode, superNode,
+			  delay, NULL);
   }
   else {
 	  node = new Gnutella(listeningPort, userNode, clientNode, superNode,
-			  sharedDirectory.c_str());
+			  delay, sharedDirectory.c_str());
   }
 
   // Bootstrap if a non-default port
@@ -1876,6 +1889,7 @@ int main(int argc, char **argv) {
   }
   // If a client node, accept connections without a periodic ping
   else if (clientNode || superNode) {
+	  node->acceptConnections(BOOT_WAIT);
 	  while (true) {
 		  node->acceptConnections();
 	  }
