@@ -325,6 +325,11 @@ private:
 		}
 		buffer[HEADER_SIZE+1] = 0;
 
+		ostringstream oss;
+		oss << "\nHeader:  " << byte_array_to_str(buffer, HEADER_SIZE)
+				<< "\nFrom: " << ntohs(peer.get_port());
+		log(oss.str());
+
 		return new DescriptorHeader(buffer);
 	}
 	
@@ -385,6 +390,10 @@ private:
 
 		Payload *payload;
 
+		ostringstream oss;
+		oss << "\nPayload: " << byte_array_to_str(buffer, payloadSize);
+		log(oss.str());
+
 		switch (header.get_header_type()) {
 		case ping:
 			payload = NULL;
@@ -443,7 +452,7 @@ private:
 	void handlePing(DescriptorHeader *header, Peer peer) {
 		bool sent = false;
 
-		DescriptorHeader d(header->get_message_id(), 
+		DescriptorHeader d(header->get_message_id(),
 				header->get_header_type(), header->get_time_to_live()-1,
 				header->get_hops()+1, header->get_payload_len());
 
@@ -455,7 +464,7 @@ private:
 				sendPong(*it, header->get_message_id());
 				sent = true;
 			}
-			else {
+			else if (header->get_time_to_live() != 0) {
 				map<Peer,map<MessageId,Peer> >::iterator x =
 						m_sentPingMap.find(*it);
 				// If there isn't a map from the message id to a peer already
@@ -536,7 +545,7 @@ private:
 					}
 				}
 				// If not send it along
-				else {
+				else if (header->get_time_to_live() != 0) {
 					DescriptorHeader d(header->get_message_id(),
 							header->get_header_type(),
 							header->get_time_to_live()-1, header->get_hops()+1,
@@ -562,43 +571,45 @@ private:
 		}
 
 		// Pass QUERY along to all our peers
-		for (set<Peer>::iterator it = m_peers.begin(); it != m_peers.end();
-					it++)
-		{
-			// Ignore whoever just sent us the query.
-			if ((*it) == peer) {
-				continue;
-			}
+		if (header->get_time_to_live() != 0) {
+			for (set<Peer>::iterator it = m_peers.begin(); it != m_peers.end();
+						it++)
+			{
+				// Ignore whoever just sent us the query.
+				if ((*it) == peer) {
+					continue;
+				}
 
-			map<Peer,map<MessageId,Peer> >::iterator x =
-					m_sentQueryMap.find(*it);
-			// If there isn't a map from the message id to a peer already
-			// associated with this peer
-			if (x != m_sentQueryMap.end()) {
-				map<MessageId,Peer>::iterator y =
-								x->second.find(header->get_message_id());
+				map<Peer,map<MessageId,Peer> >::iterator x =
+						m_sentQueryMap.find(*it);
+				// If there isn't a map from the message id to a peer already
+				// associated with this peer
+				if (x != m_sentQueryMap.end()) {
+					map<MessageId,Peer>::iterator y =
+									x->second.find(header->get_message_id());
 
-				if (y == x->second.end()) {
-					// Clear out old QUERYs
-					while(x->second.size() >= MAX_QUERY_STORAGE) {
-						x->second.erase(x->second.begin());
+					if (y == x->second.end()) {
+						// Clear out old QUERYs
+						while(x->second.size() >= MAX_QUERY_STORAGE) {
+							x->second.erase(x->second.begin());
+						}
+
+						x->second.insert(pair<MessageId,Peer>
+								(header->get_message_id(),peer));
+						// Forward the QUERY
+						sendToPeer(*it, &d, payload);
 					}
-
-					x->second.insert(pair<MessageId,Peer>
+				}
+				// There wasn't a map for this peer at all
+				else {
+					map<MessageId,Peer> idToPeer;
+					idToPeer.insert(pair<MessageId,Peer>
 							(header->get_message_id(),peer));
+					m_sentQueryMap.insert(pair<Peer,map<MessageId,Peer> >
+									(*it,idToPeer));
 					// Forward the QUERY
 					sendToPeer(*it, &d, payload);
 				}
-			}
-			// There wasn't a map for this peer at all
-			else {
-				map<MessageId,Peer> idToPeer;
-				idToPeer.insert(pair<MessageId,Peer>
-						(header->get_message_id(),peer));
-				m_sentQueryMap.insert(pair<Peer,map<MessageId,Peer> >
-								(*it,idToPeer));
-				// Forward the QUERY
-				sendToPeer(*it, &d, payload);
 			}
 		}
 
@@ -740,7 +751,7 @@ private:
 		}
 
 		// Check if we need to pass this QUERYHIT along
-		x = m_sentQueryMap.begin();
+		x = m_sentQueryMap.find(peer);
 
 		if (x != m_sentQueryMap.end()) {
 			map<MessageId, Peer>::iterator y =
@@ -761,7 +772,7 @@ private:
 					m_queryHitPeers.push_back(peer);
 				}
 				// If not send it along
-				else {
+				else if (header->get_time_to_live() != 0) {
 					DescriptorHeader d(header->get_message_id(),
 							header->get_header_type(),
 							header->get_time_to_live() - 1,
@@ -848,7 +859,7 @@ private:
 						// Do something
 				}
 				// If not send it along
-				else {
+				else if (header->get_time_to_live() != 0) {
 					DescriptorHeader d(header->get_message_id(),
 							header->get_header_type(),
 							header->get_time_to_live() - 1,
@@ -1109,6 +1120,16 @@ private:
 					header->get_payload_len());
 		buff[len] = 0;
 
+		ostringstream tmp;
+		tmp << "\nHeader:  "
+				<< byte_array_to_str(header->get_header(), HEADER_SIZE);
+		if (payload != NULL) {
+			tmp << "\nPayload: "
+					<< byte_array_to_str(payload->get_payload(),
+							header->get_payload_len());
+		}
+		log(tmp.str());
+
 		// Send all at once
 		int status = send(peer.get_send(), buff, len, 0);
 		if (status != len) {
@@ -1226,10 +1247,6 @@ public:
 			oss << "Invalid header from " << ntohs(peer.get_port());
 			log(oss.str());
 			removePeer(peer);
-			return;
-		}
-
-		if (header->get_header_type() != con && header->get_time_to_live() == 0) {
 			return;
 		}
 
