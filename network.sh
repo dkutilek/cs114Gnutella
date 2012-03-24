@@ -22,7 +22,7 @@ if [ -n "$2" ]; then
   fi
 fi
 
-rm "done"
+rm -f "done"
 
 # Control while loop
 OPTIONS="Build Destroy Exit"
@@ -64,7 +64,7 @@ while true; do
      COUNT=0
      MODCOUNT=0
      BOOTPORT=$PORT
-     rm "done"
+     rm -f "done"
      ./gnutella --listen=$PORT &
      sleep 2
      let "PORT += 2"
@@ -83,7 +83,7 @@ while true; do
            do
              DONEGREP=`ls | grep "done"`;
          done
-         rm "done"
+         rm -f "done"
          sleep 2
          let "PORT += 2"
          let "NUMNODES -= 1"

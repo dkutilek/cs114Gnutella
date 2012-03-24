@@ -42,6 +42,7 @@
 #define SENDQUERY_TIMEOUT 5
 #define CONNECT_TIMEOUT 5
 #define HTTP_TIMEOUT 5
+#define BOOT_WAIT 60
 #define PERIODIC_PING 20
 
 using namespace std;
@@ -1846,6 +1847,7 @@ int main(int argc, char **argv) {
 	  }
   }
   else {
+	  node->acceptConnections(BOOT_WAIT);
 	  while (true) {
 		  node->periodicPing();
 	  	  node->acceptConnections(PERIODIC_PING);
